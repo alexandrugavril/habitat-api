@@ -6,6 +6,7 @@
 
 from habitat.core.registry import registry
 from habitat.datasets.eqa.mp3d_eqa_dataset import Matterport3dDatasetV1
+from habitat.datasets.eqa.replica_dataset import PointNavDatasetV2
 from habitat.datasets.pointnav.pointnav_dataset import PointNavDatasetV1
 
 
