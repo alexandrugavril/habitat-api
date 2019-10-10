@@ -35,12 +35,14 @@ from habitat.utils.geometry_utils import quaternion_xyzw_to_wxyz
 from habitat.core.simulator import ShortestPathPoint, SimulatorActions
 from habitat.tasks.nav.shortest_path_follower import ShortestPathFollower
 from habitat.utils.geometry_utils import quaternion_to_list
+import math
 
 
 BASE_CFG_PATH = "configs/tasks/pointnav.yaml"
 SCENE_INFO_PATH = "../Replica-Dataset/dataset/semantic_data.npy"
 SCENE_MOCKUP_PATH = "../Replica-Dataset/dataset/{}/habitat/mesh_semantic.ply"
 NUM_EPISODES = 100
+NO_MULTI_GOALS = 6
 
 # FILTER OBJECTS
 MATCHING_CLASSES = dict({  # REPLICA class name: COCO class name
@@ -59,6 +61,19 @@ MATCHING_CLASSES = dict({  # REPLICA class name: COCO class name
 })
 
 
+def spiral(radius, step, resolution=.1, angle=0.0, start=0.0):
+    dist = start+0.0
+    coords=[]
+    while dist*math.hypot(math.cos(angle),math.sin(angle))<radius:
+        cord=[]
+        cord.append(dist*math.cos(angle))
+        cord.append(dist*math.sin(angle))
+        coords.append(cord)
+        dist+=step
+        angle+=resolution
+    return coords
+
+
 def _create_episode(
     episode_id,
     scene_id,
@@ -71,20 +86,28 @@ def _create_episode(
     multi_target=None,
     multi_taget_radius=0.2,
 ) -> Optional[NavigationEpisode]:
-    goals = [NavigationGoal(position=target_position, radius=radius)]
-    if multi_target is not None:
-        for t in multi_target:
-            goals.append(NavigationGoal(position=t, radius=multi_taget_radius))
 
-    return NavigationEpisode(
+    ep = NavigationEpisode(
         episode_id=str(episode_id),
-        goals=goals,
+        goals=[],
         scene_id=scene_id,
         start_position=start_position,
         start_rotation=start_rotation,
         shortest_paths=shortest_paths,
         info=info,
     )
+
+    if multi_target is None:
+        goals = [NavigationGoal(position=target_position, radius=radius)]
+    else:
+        ep.tested_coord = target_position
+        goals = []
+        for t in multi_target:
+            goals.append(NavigationGoal(position=t, radius=multi_taget_radius))
+
+    ep.goals = goals
+
+    return ep
 
 
 def get_action_shortest_path(
@@ -314,6 +337,7 @@ def generate_pointnav_episode(
     number_retries_per_target: int = 50,
     floor_coord: List[float] = None,
     max_samples_multi_target: int = 40,
+    spiral_coord: np.ndarray = None,
 ) -> NavigationEpisode:
     r"""Generator function that generates PointGoal navigation episodes.
 
@@ -347,10 +371,11 @@ def generate_pointnav_episode(
     currently loaded into simulator scene.
     """
     episode_count = 0
-    multiple_targets = None
+    m_t = None
     target_position = None
     floor_coord = np.array(floor_coord)
     target_idx = 0
+    error_code = []
 
     while episode_count < num_episodes or num_episodes < 0:
         if target_position is None:
@@ -361,10 +386,9 @@ def generate_pointnav_episode(
             target is None:
             continue
 
-        if multiple_targets is not None:
-            target_idx = np.random.randint(0, len(multiple_targets))
-            target = multiple_targets[target_idx]
-            target_idx += 1
+        if m_t is not None:
+            target_idx = np.random.randint(0, len(m_t))
+            target_position = m_t[target_idx]
 
         found_episode = False
         episode = None
@@ -409,58 +433,79 @@ def generate_pointnav_episode(
                     shortest_paths=shortest_paths,
                     radius=shortest_path_success_distance,
                     info={"geodesic_distance": dist},
-                    multi_target=multiple_targets
+                    multi_target=m_t
                 )
                 episode.target_idx = target_idx
+                episode.error_code = error_code
 
                 episode_count += 1
                 found_episode = True
                 break
+            else:
+                error_code.append(dist)
 
-        if not found_episode:
+        if not found_episode and m_t is None:
             print("Can't reach actual object coordinate, try to find "
                   "shortest reachable points")
 
             min_dist = 0.2
-            end = []
-            while len(end) < max_samples_multi_target:
-                angle = np.random.uniform(0, 2 * np.pi)
-                source_rotation = [0, np.sin(angle / 2), 0, np.cos(angle / 2)]
 
-                source_position = sample_navigable_point(sim, floor_coord)
+            # Get floor height of object
+            floor_h = sample_navigable_point(sim, floor_coord)[1]
 
-                shp = get_action_shortest_path(
-                    sim,
-                    source_position=source_position,
-                    source_rotation=source_rotation,
-                    goal_position=target_position,
-                    success_distance=min_dist,
-                    max_episode_steps=shortest_path_max_steps,
-                )
-                if len(shp) <= 0:
-                    continue
+            # Generate points on a spiral
+            spiral_pts = spiral_coord + np.array([target[0], target[2]])
+            n_pts = []
+            for pt in spiral_pts:
+                npt = [pt[0], floor_h, pt[1]]
+                is_nav = sim.is_navigable(npt)
+                if is_nav:
+                    n_pts.append(npt)
 
-                shp = np.array([x.position for x in shp])
-                eucl_distance = \
-                    np.linalg.norm(shp - np.array(target), axis=1)
-
-                end.append(shp[eucl_distance.argmin()])
-
-            end = np.array(end)
+            n_pts = np.array(n_pts)
 
             eucl_distance = \
-                np.linalg.norm(end - np.array(target), axis=1)
+                np.linalg.norm(n_pts - np.array(target), axis=1)
             sortidx = np.argsort(eucl_distance)
-            accepted_distance = np.mean(eucl_distance[sortidx][:3]) + min_dist
-            accepted_distance = max(accepted_distance,
-                                    shortest_path_success_distance)
+            n_pts = n_pts[sortidx]
 
-            multiple_targets = end[
-                eucl_distance < accepted_distance]
+            m_t = []
+            first_dist = None
+            while len(m_t) < NO_MULTI_GOALS and len(n_pts) > 0:
 
-            multiple_targets = np.unique(multiple_targets, axis=0)
-            print(multiple_targets)
-            assert len(multiple_targets) > 0, "Still no targets"
+                # check reachebilty
+                reachable = False
+                while not reachable:
+                    for _ in range(10):
+                        check_p = sample_navigable_point(sim, floor_coord)
+                        d_sep = sim.geodesic_distance(n_pts[0], check_p)
+                        if d_sep != np.inf:
+                            reachable = True
+                    if not reachable:
+                        n_pts = n_pts[1:]
+
+                if first_dist is None:
+                    first_dist = np.linalg.norm(target - n_pts[0]) + min_dist
+                else:
+                    if np.linalg.norm(target - n_pts[0]) > first_dist:
+                        break
+
+                m_t.append(n_pts[0])
+                n_pts = n_pts[1:]
+
+                n_cnt = len(n_pts)
+                m_cnt = len(m_t)
+                mtt = np.array(m_t)
+                d = np.linalg.norm(np.repeat(np.expand_dims(n_pts, 1),
+                                             m_cnt, 1).reshape(-1, 3) -
+                                   np.repeat(np.expand_dims(mtt, 0),
+                                             n_cnt, 0).reshape(-1, 3), axis=1)
+                select = (d.reshape(n_cnt, m_cnt,) > 1).all(axis=1)
+                n_pts = n_pts[select]
+
+            m_t = np.array(m_t)
+            print(m_t)
+            assert len(m_t) > 0, "Still no targets"
 
             continue
 
@@ -502,12 +547,16 @@ def generate_episodes():
     env.seed(config.SEED)
     random.seed(config.SEED)
 
+    # Generate spiral coords
+    spiral_shift = np.array(spiral(5, 0.001))
+
     dataset_episodes = []
     for room in df_objects.room.unique():
         print(f"Generating episodes for room {room}")
-        if room in ["office_1", "office_2", "room_2", "frl_apartment_0",
-                    "office_3"]:
-            continue
+        # if room in ['office_1', 'office_2', 'room_2', 'frl_apartment_0', 'office_3',
+        #        'frl_apartment_2', 'hotel_0', 'apartment_0', 'frl_apartment_5',
+        #        'room_1', 'room_0', 'apartment_2', 'apartment_1']:
+        #     continue
 
         scene_path = SCENE_MOCKUP_PATH.format(room)
         scene_df = df_objects[df_objects.room == room]
@@ -561,6 +610,7 @@ def generate_episodes():
                 number_retries_per_target=50,
                 geodesic_min_ratio_prob=0.5,
                 floor_coord=floor_coord,
+                spiral_coord=spiral_shift,
             )
 
             episodes = []
@@ -575,6 +625,7 @@ def generate_episodes():
                 episode.class_name = obj_row['class_name']
 
                 episodes.append(episode)
+
 
             for episode in episodes:
                 check_shortest_path(env, episode)
