@@ -1,7 +1,7 @@
 import habitat
 import cv2
 import pandas as pd
-
+import math
 from habitat.core.dataset import Dataset, Episode
 from habitat.tasks.nav.nav_task import (
     NavigationEpisode,
@@ -9,6 +9,7 @@ from habitat.tasks.nav.nav_task import (
     StopAction,
 )
 from habitat.utils.visualizations import maps
+from yolov3.detector import YoloDetector
 
 from habitat_sim.utils.common import quat_from_two_vectors, quat_rotate_vector
 import numpy as np
@@ -19,6 +20,24 @@ RIGHT_KEY="d"
 FINISH="f"
 LOOK_UP = "8"
 LOOK_DOWN = "2"
+
+
+CLASSES = dict({  # REPLICA class name: COCO class name
+    "book": "book",
+    "chair": "chair",
+    "table": "diningtable",
+    "bowl": "bowl",
+    "bottle": "bottle",
+    "indoor-plant": "pottedplant",
+    "cup": "cup",
+    "vase": "vase",
+    "tv-screen": "tvmonitor",
+    "sofa": "sofa",
+    "bike": "bicycle",
+    "sink": "sink"
+})
+
+detector = YoloDetector("/raid/workspace/alexandrug/habitat-api/yolov3/config/yolo_config.yaml")
 
 
 def get_goal(room, ep):
@@ -36,8 +55,7 @@ def get_goal(room, ep):
     for idx, row in df.iterrows():
         ep.start_position = row["start_position"]
         ep.start_rotation = row["start_rotation"]
-        # ep.goals = row["goals"]
-        ep.goals = [row["goals"][0]]
+        ep.goals = row["goals"]
         ep.class_name = row["class_name"]
         ep.info = row["info"]
         yield ep
@@ -73,13 +91,12 @@ class AIMASRLEnv(habitat.RLEnv):
 def transform_rgb_bgr(image):
     return image[:, :, [2, 1, 0]]
 
-
 apartment = "office_3"
 ep = NavigationEpisode(
     episode_id="0",
     scene_id=f"/raid/workspace/alexandrug/Replica-Dataset/dataset"
              f"/{apartment}/habitat/mesh_semantic.ply",
-    start_position=[0.1244944, -1.020689, -2.1761066],
+    start_position=[-0.6644544, -1.020689, -0.4631982],
     start_rotation=[0, 0.163276, 0, 0.98658],
     goals=[
         NavigationGoal(position=[-2.452475, -1.02069 ,  1.156327])
@@ -116,13 +133,12 @@ def draw_top_down_map(info, heading, output_size):
 
 
 def example():
-    cfg = habitat.get_config("configs/tasks/pointnav.yaml")
-    cfg.defrost()
-    cfg.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
-    cfg.TASK.SENSORS.append("HEADING_SENSOR")
-    cfg.SIMULATOR.SCENE = f"/raid/workspace/alexandrug/Replica-Dataset/dataset/{apartment}/habitat/mesh_semantic.ply"
-    cfg.freeze()
-    env = AIMASRLEnv(config=cfg, dataset=dataset)
+    cfg = habitat.get_config("configs/tasks/pointnav_replica2.yaml")
+
+    env = AIMASRLEnv(config=cfg) #, dataset=dataset)
+    env.habitat_env.episode_iterator.shuffle = True
+    env.habitat_env.episode_iterator.max_scene_repetition = 2
+
 
     global ep
     ep_iterator = get_goal(apartment, ep)
@@ -143,8 +159,13 @@ def example():
     print("GOAL:", env.current_episode.goals)
     print(habitat.SimulatorActions)
 
+    sensor_pos = np.array(cfg.SIMULATOR.RGB_SENSOR.POSITION)
+    target = np.array([-1.22593305, -0.62069,  0.41110563]) # + sensor_posnp.array([-1.22593305, -0.62069,  0.41110563]) + sensor_pos
+
     count_steps = 0
     done = False
+    print(env.current_episode)
+
     while not done:
         keystroke = cv2.waitKey(0)
 
@@ -167,12 +188,15 @@ def example():
             action = habitat.SimulatorActions.LOOK_DOWN
             print("action: LOOK_DOWN")
         elif keystroke == ord("r"):
-            ep = next(ep_iterator)
-            print(f"New_ep: {ep.class_name} @ {ep.goals}")
-            env.episode_iterator = iter([ep])
+            #ep = next(ep_iterator)
+            #print(f"New_ep: {ep.class_name} @ {ep.goals}")
+            #env.episode_iterator = iter([ep])
             env.reset()
+            print("CEPISODE:")
+            print(env.current_episode.__dict__)
             continue
         elif keystroke == ord('q'):
+
             x = float(input("X:"))
             y = float(input("Y:"))
             z = float(input("Z:"))
@@ -192,20 +216,68 @@ def example():
         observations, reward, done, info = env.step(action)
         count_steps += 1
 
+
         agent_state = env.get_agent_state()
-        print(agent_state.position)
-        print(reward)
+        print("AGENT STATE POS:", agent_state.position)
+        print("REWARD:", reward)
+        state = env.get_agent_state().sensor_states["rgb"]
+
+        print("="* 100)
+        print("STATE", state.position)
+        print("DIST TO CAMERA", target - state.position)
+        print("ROTATION", [math.degrees(x) for x in quaternion.as_euler_angles(state.rotation)])
+        print("="* 100)
+
 
         print("Destination, distance: {:3f}, theta(radians): {:.2f}".format(
             observations["pointgoal_with_gps_compass"][0], observations["pointgoal_with_gps_compass"][1]))
 
-        im = observations["rgb"]
-        top_down_map = draw_top_down_map(
-            info, observations["heading"], im.shape[0]
-        )
-        output_im = np.concatenate((transform_rgb_bgr(im), top_down_map), axis=1)
 
-        cv2.imshow("RGB", output_im)
+
+        print(observations['goal_bbox_in_camera'])
+        print(observations.keys())
+        im = observations["rgb"]
+
+        #top_down_map = draw_top_down_map(
+        #    info, observations["heading"], im.shape[0]
+        #)
+
+        #)
+
+        goal_bbox_in_camera, scale_points, (wg, hg) = observations['goal_bbox_in_camera']
+
+
+        dx = goal_bbox_in_camera[3]
+        dy = goal_bbox_in_camera[4]
+
+        w, h, _ = im.shape
+
+        xpx = int(dx * w + w/2)
+        ypx = int(dy * h + h/2)
+
+        xpx_low = int((dx - wg / 2) * w + w / 2)
+        ypx_low = int((dy - hg / 2) * h + h / 2)
+
+        xpx_high = int((dx + wg / 2) * w + w / 2)
+        ypx_high = int((dy + hg / 2) * h + h / 2)
+
+        surrounding = [(int(dx2 * w + w/2), int(dy2 * h + h/2)) for _, _, _, dx2, dy2 in scale_points]
+
+        if dx != -1 and dy != -1:
+            im = cv2.circle(im, (xpx, ypx), 2, (255, 255, 0), 1).get()
+            print("=" * 100)
+            print("CENTER:", xpx, ypx)
+            for pt in surrounding[0:4]:
+                print(pt)
+                im = cv2.circle(im, pt, 2, (255, 0, 0), 1)
+            for pt in surrounding[4:]:
+                print(pt)
+                im = cv2.circle(im, pt, 2, (255, 0, 255), 1)
+            im = cv2.rectangle(im, (xpx_low, ypx_low), (xpx_high, ypx_high), (0, 255, 0), 1)
+
+        #output_im = np.concatenate((im, top_down_map), axis=1)
+        detections, im_detections = detector.detect(im)
+        cv2.imshow("RGB", im)
 
     print("Episode finished after {} steps.".format(count_steps))
 

@@ -166,9 +166,10 @@ VAL_ROOMS = ["frl_apartment_1", "office_2", ]
 TRAIN_ROOMS = [x for x in APARTMENTS if x not in TEST_ROOMS and x not in
                VAL_ROOMS]
 
-OUT_FOLDER = "../Replica-Dataset/"
+OUT_FOLDER = "../Replica-Dataset/dataset_jsons/"
 SAVE_KEYS = ["episode_id", "scene_id", "start_position", "start_rotation", "info", "goals",
-             "t_coord", "room",
+             "t_coord", "t_size", "target_idx",  "room",
+             "class_name",
              "complexity_quartile", "geodesic_distances", "euclidean_dist", "nav_point2goal"]
 
 
@@ -194,6 +195,9 @@ dfm.geodesic_distances = dfm.geodesic_distances.apply(list)
 dfm.euclidean_dist = dfm.euclidean_dist.apply(list)
 dfm.nav_point2goal = dfm.nav_point2goal.apply(list)
 dfm.t_coord = dfm.t_coord.apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
+dfm.t_size = dfm.t_size.apply(lambda x: x.tolist() if isinstance(x, np.ndarray) else x)
+dfm.t_size = dfm.t_size.apply(lambda y: [x.tolist() if isinstance(x,
+                                                                  np.ndarray) else x for x in y])
 dfm["shortest_paths"] = None
 dfm["start_room"] = None
 dfm.scene_id = dfm.scene_id.apply(lambda x: x.replace(OUT_FOLDER, ""))
@@ -205,20 +209,39 @@ model_ep = copy.deepcopy(data[0])
 
 for dataset_name, datasate_rooms in [("train", TRAIN_ROOMS), ("val", VAL_ROOMS),
                                      ("test", TEST_ROOMS)]:
-    dfmslice = dfm[dfm.room.isin(datasate_rooms)]
-    dataset_elements = []
-    for x in dfmslice.to_dict(orient="records"):
-        p = copy.deepcopy(model_ep)
-        p.__dict__ = x
-        dataset_elements.append(x)
+    dfmslices = dfm[dfm.room.isin(datasate_rooms)]
+    out_fld_base = f"{OUT_FOLDER}/{dataset_name}/"
+    os.mkdir(out_fld_base)
 
-    dataset = habitat.Dataset()
-    dataset.episodes = dataset_elements
+    out_fld = f"{out_fld_base}/content/"
+    out_fld_dummy = f"{out_fld_base}/"
 
-    json_data = dataset.to_json()
-    json_path = OUT_FOLDER + f"{dataset_name}.json"
+    os.mkdir(out_fld)
+
+    for room in dfmslices.room.unique():
+        dfmslice = dfm[dfm.room == room]
+
+        dataset_elements = []
+        for x in dfmslice.to_dict(orient="records"):
+            p = copy.deepcopy(model_ep)
+            p.__dict__ = x
+            dataset_elements.append(x)
+
+        dataset = habitat.Dataset()
+        dataset.episodes = dataset_elements
+
+        json_data = dataset.to_json()
+        json_path = out_fld + f"{room}.json"
+        print(f"1 gzip {json_path}")
+        with open(json_path, "w") as f:
+            f.write(json_data)
+        os.system(f"gzip {json_path}")
+
+    # Dummy file
+    json_path = out_fld_dummy + f"{dataset_name}.json"
+    print(f"2 gzip {json_path}")
     with open(json_path, "w") as f:
-        f.write(json_data)
+        f.write('{"episodes": []}')
 
     os.system(f"gzip {json_path}")
 
