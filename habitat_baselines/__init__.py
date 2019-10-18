@@ -6,5 +6,7 @@
 
 from habitat_baselines.common.base_trainer import BaseRLTrainer, BaseTrainer
 from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer, RolloutStorage
+from habitat_baselines.rl.ppo.ppo_trainer_aimas import PPOTrainerAimas
 
-__all__ = ["BaseTrainer", "BaseRLTrainer", "PPOTrainer", "RolloutStorage"]
+__all__ = ["BaseTrainer", "BaseRLTrainer", "PPOTrainer", "RolloutStorage",
+           "PPOTrainerAimas"]
