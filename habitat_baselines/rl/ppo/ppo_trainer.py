@@ -113,6 +113,7 @@ class PPOTrainer(BaseRLTrainer):
 
         t_sample_action = time.time()
         # sample actions
+
         with torch.no_grad():
             step_observation = {
                 k: v[rollouts.step] for k, v in rollouts.observations.items()
@@ -272,6 +273,7 @@ class PPOTrainer(BaseRLTrainer):
                     )
 
                 for step in range(ppo_cfg.num_steps):
+                    print("Step: ", step)
                     delta_pth_time, delta_env_time, delta_steps = self._collect_rollout_step(
                         rollouts,
                         current_episode_reward,
@@ -380,9 +382,9 @@ class PPOTrainer(BaseRLTrainer):
 
         ppo_cfg = config.RL.PPO
 
-        config.defrost()
-        config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
-        config.freeze()
+        # config.defrost()
+        # config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
+        # config.freeze()
 
         if len(self.config.VIDEO_OPTION) > 0:
             config.defrost()
@@ -392,7 +394,7 @@ class PPOTrainer(BaseRLTrainer):
 
         logger.info(f"env config: {config}")
         self.envs = construct_envs(
-            self.config, get_env_class(self.config.ENV_NAME)
+            config, get_env_class(self.config.ENV_NAME)
         )
         self._setup_actor_critic_agent(ppo_cfg)
 
@@ -460,6 +462,46 @@ class PPOTrainer(BaseRLTrainer):
                 list(x) for x in zip(*outputs)
             ]
             batch = batch_obs(observations, self.device)
+
+            # # """
+            # # =================================================================
+            # if "prev_len_stats" not in locals():
+            #     prev_len_stats = len(stats_episodes)
+            #     save_data_idx = 0
+            # elif prev_len_stats != len(stats_episodes):
+            #     prev_len_stats = len(stats_episodes)
+            #     save_data_idx = 0
+            #
+            # xf = batch["goal_coord_in_camera"][:, -2]
+            # yf = batch["goal_coord_in_camera"][:, -1]
+            # select = torch.sqrt(xf ** 2 + yf ** 2) < 0.2
+            # select = torch.ones_like(select)
+            #
+            # if select.sum() > 0:
+            #     print(f"Saving {select.sum().item()} frames ...")
+            #     save_data = dict()
+            #     # ---
+            #     for idx in ['rgb', 'goalclass', 'setgoal',
+            #                 'goal_coord_in_camera', 'pointgoal_with_gps_compass',
+            #                 'objectgoal_with_gps_compass',
+            #                 "agent_pos_sensor", "goal_bbox_in_camera"]:
+            #         save_data[idx] = batch[idx][select]
+            #
+            #     xtensor = torch.tensor(
+            #         [x.episode_id for x in current_episodes])
+            #     save_data["episode_id"] = xtensor[select]
+            #
+            #     stats = [x.all_stats for x in current_episodes]
+            #     save_data["all_obj_coord"] = stats
+            #
+            #     torch.save(save_data,
+            #                self.config.VIDEO_DIR +
+            #                f'/episode_data/{len(stats_episodes)}'
+            #                f'_{save_data_idx}')
+            #     save_data_idx += 1
+            #
+            # # =================================================================
+            # # """
 
             not_done_masks = torch.tensor(
                 [[0.0] if done else [1.0] for done in dones],
