@@ -2,7 +2,7 @@ ENVIRONMENT:
   MAX_EPISODE_STEPS: 500
 SIMULATOR:
   AGENT_0:
-    SENSORS: ['RGB_SENSOR']
+    SENSORS: ['RGB_SENSOR', 'DEPTH_SENSOR']
   HABITAT_SIM_V0:
     GPU_DEVICE_ID: 0
   RGB_SENSOR:
@@ -23,7 +23,7 @@ TASK:
     GOAL_SELECTION: "RANDOM"
   GOAL_SENSOR_UUID: pointgoal_with_gps_compass
 
-  MEASUREMENTS: ['SPLMultiGoal', "TOP_DOWN_MAP"]
+  MEASUREMENTS: ['SPLMultiGoal']
   SPLMultiGoal:
     TYPE: SPLMultiGoal
     SUCCESS_DISTANCE: 0.0  # 0.2 already added to goal radius

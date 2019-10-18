@@ -50,6 +50,18 @@ _C.RL = CN()
 _C.RL.SUCCESS_REWARD = 10.0
 _C.RL.SLACK_REWARD = -0.01
 # -----------------------------------------------------------------------------
+# DETECTOR
+_C.DETECTOR = CN()
+_C.DETECTOR.model_def = "yolov3/config/yolov3.cfg"
+_C.DETECTOR.weights_path = "yolov3/weights/yolov3.weights"
+_C.DETECTOR.class_path = "yolov3/data/coco.names"
+_C.DETECTOR.iou_thres = 0.5
+_C.DETECTOR.conf_thres = 0.2
+_C.DETECTOR.img_size = 256
+_C.DETECTOR.nms_thres = 0.4
+_C.DETECTOR.out_size = 32
+
+# -----------------------------------------------------------------------------
 # PROXIMAL POLICY OPTIMIZATION (PPO)
 # -----------------------------------------------------------------------------
 _C.RL.PPO = CN()
