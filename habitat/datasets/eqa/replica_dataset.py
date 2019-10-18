@@ -26,6 +26,26 @@ DEFAULT_SCENE_PATH_PREFIX = "data/scene_datasets/"
 
 @registry.register_dataset(name="PointNav-v2")
 class PointNavDatasetV2(PointNavDatasetV1):
+
+    @staticmethod
+    def get_scenes_to_load(config: Config) -> List[str]:
+        r"""Return list of scene ids for which dataset has separate files with
+        episodes.
+        """
+        assert PointNavDatasetV1.check_config_paths_exist(config)
+        dataset_dir = os.path.dirname(
+            config.DATA_PATH.format(split=config.SPLIT)
+        )
+
+        cfg = config.clone()
+        cfg.defrost()
+        cfg.CONTENT_SCENES = []
+        dataset = PointNavDatasetV2(cfg)
+        return PointNavDatasetV2._get_scenes_from_folder(
+            content_scenes_path=dataset.content_scenes_path,
+            dataset_dir=dataset_dir,
+        )
+
     def __init__(self, config: Optional[Config] = None) -> None:
         self.navigation_base = [x.name for x in
                                 NavigationEpisode.__attrs_attrs__]
