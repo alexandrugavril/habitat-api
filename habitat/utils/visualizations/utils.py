@@ -165,12 +165,31 @@ def observations_to_image(observation: Dict, info: Dict) -> np.ndarray:
     if "collisions" in info and info["collisions"]["is_collision"]:
         egocentric_view = draw_collision(egocentric_view)
 
+    if "goal_coord_in_camera" in observation:
+        _, _, _, xpx, ypx = observation["goal_coord_in_camera"]
+
+        if xpx != -1 and ypx != -1:
+
+            xpx = int(xpx * observation_size + observation_size / 2)
+            ypx = int(ypx * observation_size + observation_size / 2)
+
+            egocentric_view = cv2.circle(egocentric_view, (xpx, ypx), 15,
+                                         (0, 0, 255), 5)
+
     # draw depth map if observation has depth info
     if "depth" in observation:
         depth_map = (observation["depth"].squeeze() * 255).astype(np.uint8)
         depth_map = np.stack([depth_map for _ in range(3)], axis=2)
 
         egocentric_view = np.concatenate((egocentric_view, depth_map), axis=1)
+
+    if "goalclass" in observation:
+        from habitat.tasks.nav.nav_task_multi_goal import CLASSES
+        index = np.nonzero(observation["goalclass"])[0][0]
+        classes = list(CLASSES.keys())
+        class_name = classes[index]
+        cv2.putText(egocentric_view, class_name, (15, 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255))
 
     frame = egocentric_view
 
@@ -201,4 +220,5 @@ def observations_to_image(observation: Dict, info: Dict) -> np.ndarray:
             interpolation=cv2.INTER_CUBIC,
         )
         frame = np.concatenate((egocentric_view, top_down_map), axis=1)
+
     return frame
