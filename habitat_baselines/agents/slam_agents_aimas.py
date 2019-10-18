@@ -169,7 +169,8 @@ class BlindAgent(RandomAgent):
         return {"action": action}
 
 
-class ORBSLAM2Agent(RandomAgent):
+
+class ORBSLAM2AgentAimas(RandomAgent):
     def __init__(self, config, device=torch.device("cuda:0")):
         self.num_actions = config.NUM_ACTIONS
         self.dist_threshold_to_stop = config.DIST_TO_STOP
@@ -214,7 +215,8 @@ class ORBSLAM2Agent(RandomAgent):
         return
 
     def reset(self):
-        super(ORBSLAM2Agent, self).reset()
+        super(ORBSLAM2AgentAimas, self).reset()
+        self.has_seen_goal = False
         self.offset_to_goal = None
         self.tracking_is_OK = False
         self.waypointPose6D = None
@@ -240,7 +242,7 @@ class ORBSLAM2Agent(RandomAgent):
         return
 
     def update_internal_state(self, habitat_observation):
-        super(ORBSLAM2Agent, self).update_internal_state(habitat_observation)
+        super(ORBSLAM2AgentAimas, self).update_internal_state(habitat_observation)
         self.cur_time += self.timestep
         rgb, depth = self.rgb_d_from_observation(habitat_observation)
         t = time.time()
@@ -341,7 +343,11 @@ class ORBSLAM2Agent(RandomAgent):
             return {"action": action}
         # Plan action
         t = time.time()
-        self.planned2Dpath, self.planned_waypoints = self.plan_path()
+        if self.has_seen_target(habitat_observation):
+            self.planned2Dpath, self.planned_waypoints = self.plan_path()
+        else:
+            self.planned2Dpath, self.planned_waypoints = self.explore()
+
         if self.timing:
             print(time.time() - t, " s, Planning")
         t = time.time()
@@ -489,11 +495,26 @@ class ORBSLAM2Agent(RandomAgent):
         ).to(self.device)
         return path, planned_waypoints
 
+    def has_seen_target(self, habitat_observation):
+        rgb_img = habitat_observation['rgb']
+        target_class = habitat_observation['goalclass']
+        print("I've seen ", target_class)
+        return True
+
+        detections = self.detector.detect(rgb_img)
+        if detections.contains(target_class):
+            self.has_seen_goal = True
+        return self.has_seen_goal
+
+    def explore(self):
+        return self.plan_path()
+
     def planner_prediction_to_command(self, p_next):
         command = SimulatorActions.STOP
         p_init = self.pose6D.squeeze()
         d_angle_rot_th = self.angle_th
         pos_th = self.pos_th
+
         if get_distance(p_init, p_next) <= pos_th:
             return command
         d_angle = norm_ang(
@@ -525,7 +546,8 @@ class ORBSLAM2Agent(RandomAgent):
         return command
 
 
-class ORBSLAM2MonodepthAgent(ORBSLAM2Agent):
+
+class ORBSLAM2MonodepthAgent(ORBSLAM2AgentAimas):
     def __init__(
         self,
         config,
@@ -618,7 +640,7 @@ def main():
     if args.agent_type == "blind":
         agent = BlindAgent(agent_config.ORBSLAM2)
     elif args.agent_type == "orbslam2-rgbd":
-        agent = ORBSLAM2Agent(agent_config.ORBSLAM2)
+        agent = ORBSLAM2AgentAimas(agent_config.ORBSLAM2)
     elif args.agent_type == "orbslam2-rgb-monod":
         agent = ORBSLAM2MonodepthAgent(agent_config.ORBSLAM2)
     else:
