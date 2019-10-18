@@ -37,6 +37,8 @@ _C.ENVIRONMENT.ITERATOR_OPTIONS.MAX_SCENE_REPEAT = -1
 _C.TASK = CN()
 _C.TASK.TYPE = "Nav-v0"
 _C.TASK.SUCCESS_DISTANCE = 0.2
+_C.TASK.SUCCESS_IF_IN_VIEW = True
+_C.TASK.VIEW_FIELD_FACTOR = 0.2
 _C.TASK.SENSORS = []
 _C.TASK.MEASUREMENTS = []
 _C.TASK.GOAL_SENSOR_UUID = "pointgoal"
@@ -82,6 +84,49 @@ _C.TASK.POINTGOAL_WITH_GPS_COMPASS_SENSOR = _C.TASK.POINTGOAL_SENSOR.clone()
 _C.TASK.POINTGOAL_WITH_GPS_COMPASS_SENSOR.TYPE = (
     "PointGoalWithGPSCompassSensor"
 )
+# -----------------------------------------------------------------------------
+# #  SET GOAL
+# -----------------------------------------------------------------------------
+_C.TASK.SET_GOAL = CN()
+_C.TASK.SET_GOAL.TYPE = "SetGoal"
+_C.TASK.SET_GOAL.GOAL_SELECTION = "RANDOM"
+# -----------------------------------------------------------------------------
+# #  GET GOAL CLASS ONE HOT
+# -----------------------------------------------------------------------------
+_C.TASK.GET_GOAL_CLASS = CN()
+_C.TASK.GET_GOAL_CLASS.TYPE = "GoalClass"
+# -----------------------------------------------------------------------------
+# #  MULTI POINT GOAL SENSOR
+# -----------------------------------------------------------------------------
+_C.TASK.POINTMULTIGOAL_SENSOR = _C.TASK.POINTGOAL_SENSOR.clone()
+_C.TASK.POINTMULTIGOAL_SENSOR.TYPE = (
+    "PointMultiGoalSensor"
+)
+# -----------------------------------------------------------------------------
+# # POINTGOAL WITH GPS+COMPASS SENSOR
+# -----------------------------------------------------------------------------
+_C.TASK.OBJECTGOAL_WITH_GPS_COMPASS_SENSOR = _C.TASK.POINTGOAL_SENSOR.clone()
+_C.TASK.OBJECTGOAL_WITH_GPS_COMPASS_SENSOR.TYPE = "ObjectGoalWithGPSCompassSensor"
+_C.TASK.OBJECTGOAL_WITH_GPS_COMPASS_SENSOR.GOAL_FORMAT = "POLAR"
+_C.TASK.OBJECTGOAL_WITH_GPS_COMPASS_SENSOR.DIMENSIONALITY = 3
+# -----------------------------------------------------------------------------
+# # POINTGOAL WITH GPS+COMPASS SENSOR
+# -----------------------------------------------------------------------------
+_C.TASK.GOAL_COORD_IN_CAMERA = CN()
+_C.TASK.GOAL_COORD_IN_CAMERA.TYPE = "GoalCoordInCamera"
+_C.TASK.GOAL_COORD_IN_CAMERA.HFOV = 90
+# -----------------------------------------------------------------------------
+# # POINTGOAL WITH GPS+COMPASS SENSOR+Object Scale
+# -----------------------------------------------------------------------------
+_C.TASK.GOAL_BBOX_IN_CAMERA = CN()
+_C.TASK.GOAL_BBOX_IN_CAMERA.TYPE = "GoalBBoxInCamera"
+_C.TASK.GOAL_BBOX_IN_CAMERA.HFOV = 90
+
+# -----------------------------------------------------------------------------
+# # POINTGOAL WITH GPS+COMPASS SENSOR
+# -----------------------------------------------------------------------------
+_C.TASK.AGENT_POS_SENSOR = CN()
+_C.TASK.AGENT_POS_SENSOR.TYPE = "AgentPosSensor"
 # ----------------  -------------------------------------------------------------
 # # HEADING SENSOR
 # -----------------------------------------------------------------------------
@@ -111,6 +156,14 @@ _C.TASK.SPL = CN()
 _C.TASK.SPL.TYPE = "SPL"
 _C.TASK.SPL.SUCCESS_DISTANCE = 0.2
 # -----------------------------------------------------------------------------
+# # SPLMultiGoal MEASUREMENT
+# -----------------------------------------------------------------------------
+_C.TASK.SPLMultiGoal = CN()
+_C.TASK.SPLMultiGoal.TYPE = "SPLMultiGoal"
+_C.TASK.SPLMultiGoal.SUCCESS_DISTANCE = 0.0
+_C.TASK.SPLMultiGoal.SUCCESS_IF_IN_VIEW = True
+_C.TASK.SPLMultiGoal.VIEW_FIELD_FACTOR = 0.2
+# -----------------------------------------------------------------------------
 # # TopDownMap MEASUREMENT
 # -----------------------------------------------------------------------------
 _C.TASK.TOP_DOWN_MAP = CN()
@@ -120,6 +173,7 @@ _C.TASK.TOP_DOWN_MAP.MAP_PADDING = 3
 _C.TASK.TOP_DOWN_MAP.NUM_TOPDOWN_MAP_SAMPLE_POINTS = 20000
 _C.TASK.TOP_DOWN_MAP.MAP_RESOLUTION = 1250
 _C.TASK.TOP_DOWN_MAP.DRAW_SOURCE_AND_TARGET = True
+_C.TASK.TOP_DOWN_MAP.DRAW_ALL_GOALS = True
 _C.TASK.TOP_DOWN_MAP.DRAW_BORDER = True
 _C.TASK.TOP_DOWN_MAP.DRAW_SHORTEST_PATH = True
 _C.TASK.TOP_DOWN_MAP.FOG_OF_WAR = CN()

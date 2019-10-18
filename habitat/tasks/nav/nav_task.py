@@ -109,6 +109,8 @@ class NavigationEpisode(Episode):
     shortest_paths: Optional[List[ShortestPathPoint]] = None
 
 
+
+
 @registry.register_sensor
 class PointGoalSensor(Sensor):
     r"""Sensor for PointGoal observations which are used in PointGoal Navigation.
@@ -198,9 +200,12 @@ class PointGoalSensor(Sensor):
     def get_observation(
         self, *args: Any, observations, episode: Episode, **kwargs: Any
     ):
+        goal_idx = getattr(episode, "goal_idx", 0)
+
         source_position = np.array(episode.start_position, dtype=np.float32)
         rotation_world_start = quaternion_from_coeff(episode.start_rotation)
-        goal_position = np.array(episode.goals[0].position, dtype=np.float32)
+        goal_position = np.array(episode.goals[goal_idx].position,
+                                 dtype=np.float32)
 
         return self._compute_pointgoal(
             source_position, rotation_world_start, goal_position
@@ -236,10 +241,13 @@ class IntegratedPointGoalGPSAndCompassSensor(PointGoalSensor):
     def get_observation(
         self, *args: Any, observations, episode, **kwargs: Any
     ):
+        goal_idx = getattr(episode, "goal_idx", 0)
+
         agent_state = self._sim.get_agent_state()
         agent_position = agent_state.position
         rotation_world_agent = agent_state.rotation
-        goal_position = np.array(episode.goals[0].position, dtype=np.float32)
+        goal_position = np.array(episode.goals[goal_idx].position,
+                                 dtype=np.float32)
 
         return self._compute_pointgoal(
             agent_position, rotation_world_agent, goal_position
@@ -442,11 +450,13 @@ class SPL(Measure):
     def update_metric(
         self, *args: Any, episode, action, task: EmbodiedTask, **kwargs: Any
     ):
+        goal_idx = getattr(episode, "goal_idx", 0)
+
         ep_success = 0
         current_position = self._sim.get_agent_state().position.tolist()
 
         distance_to_target = self._sim.geodesic_distance(
-            current_position, episode.goals[0].position
+            current_position, episode.goals[goal_idx].position
         )
 
         if (
@@ -568,18 +578,35 @@ class TopDownMap(Measure):
             s_y - point_padding : s_y + point_padding + 1,
         ] = maps.MAP_SOURCE_POINT_INDICATOR
 
-        # mark target point
-        t_x, t_y = maps.to_grid(
-            episode.goals[0].position[0],
-            episode.goals[0].position[2],
-            self._coordinate_min,
-            self._coordinate_max,
-            self._map_resolution,
-        )
-        self._top_down_map[
-            t_x - point_padding : t_x + point_padding + 1,
-            t_y - point_padding : t_y + point_padding + 1,
-        ] = maps.MAP_TARGET_POINT_INDICATOR
+        if not self._config.DRAW_ALL_GOALS:
+            goal_idx = getattr(episode, "goal_idx", 0)
+
+            # mark target point
+            t_x, t_y = maps.to_grid(
+                episode.goals[goal_idx].position[0],
+                episode.goals[goal_idx].position[2],
+                self._coordinate_min,
+                self._coordinate_max,
+                self._map_resolution,
+            )
+            self._top_down_map[
+                t_x - point_padding : t_x + point_padding + 1,
+                t_y - point_padding : t_y + point_padding + 1,
+            ] = maps.MAP_TARGET_POINT_INDICATOR
+        else:
+            for goal in episode.goals:
+                # mark target point
+                t_x, t_y = maps.to_grid(
+                    goal.position[0],
+                    goal.position[2],
+                    self._coordinate_min,
+                    self._coordinate_max,
+                    self._map_resolution,
+                )
+                self._top_down_map[
+                t_x - point_padding: t_x + point_padding + 1,
+                t_y - point_padding: t_y + point_padding + 1,
+                ] = maps.MAP_TARGET_POINT_INDICATOR
 
     def reset_metric(self, *args: Any, episode, **kwargs: Any):
         self._step_count = 0
