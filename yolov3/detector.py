@@ -4,6 +4,8 @@ import yaml
 from yolov3.models import *
 from yolov3.utils.datasets import *
 from yolov3.utils import utils
+from yolov3 import models
+
 
 class YoloDetector:
     def __init__(self, cfg_path):
@@ -46,14 +48,16 @@ class YoloDetector:
         boxes[:, 3] = ((boxes[:, 3] - pad_y // 2) / unpad_h) * orig_h
         return boxes
 
-    def detect(self, img, display = False):
+    def detect(self, img, conf_thres, display = False):
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
         t_img = torch.from_numpy(img.astype('float') / 255.0).cuda().permute(2, 0, 1).unsqueeze(0)
         t_img = t_img.type(torch.cuda.FloatTensor)
         detections = self.model(t_img)
-        detections = utils.non_max_suppression(detections, self.conf_thres, self.nms_thres)[0]
+        print(detections.size())
+        detections = utils.non_max_suppression(detections, conf_thres, self.nms_thres)[0]
         # Draw bounding boxes and labels of detections
-        if display:
-            img_disp = img.copy()
+        img_disp = img.copy()
 
         if detections is not None:
             # Rescale boxes to original image
@@ -66,20 +70,48 @@ class YoloDetector:
                 box_w = x2 - x1
                 box_h = y2 - y1
 
-                print("{} {} {} {}" .format(x1, y1, x2, y2))
+                print("{} {} {} {}".format(x1, y1, x2, y2))
                 # Create a Rectangle patch
-                if display:
-                    img_disp = cv2.rectangle(img_disp, (x2, y2), (x1, y1), (255,0,0), 2)
+                img_disp = cv2.rectangle(img_disp, (x2, y2), (x1, y1), (255, 0, 0), 2)
 
         if display:
             cv2.imshow("Test", img_disp)
             cv2.waitKey(0)
 
-        return detections
+        return detections, img_disp
 
+    def detect(self, img, display = False):
+        return self.detect(img, self.conf_thres, display)
+
+import torch
+
+import numpy as np
+import cv2
+
+# draw cube
+w = 256
+hw = w //2
+img = np.zeros((w, w), dtype=np.uint8)
+img.fill(10)
+
+cube_front_w = 100 // 2
+cube_back_w = 40 // 2
+cube_depth_w = 20
+cube_start_depth = 1
+cube_back_depth = 7
+
+
+img[hw-cube_front_w: hw+cube_front_w, hw-cube_front_w: hw+cube_front_w] = cube_start_depth
+
+depths = np.linspace(cube_back_depth, cube_start_depth, cube_depth_w)
+depth_ws = np.linspace(cube_back_w, cube_front_w, cube_depth_w)
+for i, row in enumerate(range(hw-cube_front_w-cube_depth_w, hw-cube_front_w)):
+    offset = int(depth_ws[i])
+    img[row, hw-offset: hw+offset] = depths[i]
 
 if __name__ == "__main__":
     yolo = YoloDetector('/raid/workspace/alexandrug/habitat-api/yolov3/config/yolo_config.yaml')
-    img = cv2.imread('/raid/workspace/alexandrug/habitat-api/{}.jpg'.format(1))
+    img = cv2.imread('/raid/workspace/alexandrug/habitat-api/test.png')
+    img = cv2.resize(img, (256, 256))
     print(img.shape)
-    yolo.detect(img, True)
+    yolo.detect(img, False)

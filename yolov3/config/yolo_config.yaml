@@ -1,6 +1,6 @@
-model_def: /raid/workspace/alexandrug/habitat-sim/yolov3/config/yolov3.cfg
-weights_path: /raid/workspace/alexandrug/habitat-sim/yolov3/weights/yolov3.weights
-class_path: /raid/workspace/alexandrug/habitat-sim/yolov3/data/coco.names
+model_def: yolov3/config/yolov3.cfg
+weights_path: yolov3/weights/yolov3.weights
+class_path: yolov3/data/coco.names
 iou_thres: 0.5
 conf_thres: 0.2
 img_size: 256
