@@ -1,3 +1,9 @@
+yolov3/weights/
+pip-wheel-metadata/
+results/
+tb/
+examples/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -49,7 +55,7 @@ examples/images
 *.pot
 
 # Django stuff:
-*.log
+.log
 
 # Sphinx documentation
 docs/_build/
