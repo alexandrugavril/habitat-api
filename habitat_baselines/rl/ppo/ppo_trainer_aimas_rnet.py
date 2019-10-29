@@ -13,39 +13,35 @@ import numpy as np
 import torch
 from torch.optim.lr_scheduler import LambdaLR
 
-from habitat import Config, logger
 from habitat.utils.visualizations.utils import observations_to_image
-from habitat_baselines.common.base_trainer import BaseRLTrainer
-from habitat_baselines.common.baseline_registry import baseline_registry
 from habitat_baselines.common.env_utils import construct_envs
 from habitat_baselines.common.environments import get_env_class
 from habitat_baselines.common.rollout_storage import RolloutStorage
 from habitat_baselines.common.tensorboard_utils import TensorboardWriter
 from habitat_baselines.common.utils import (
-    batch_obs,
     generate_video,
     linear_decay,
 )
-from habitat_baselines.rl.ppo import PPO, PointNavBaselinePolicy
+
+from habitat import Config, logger
+from habitat_baselines.common.baseline_registry import baseline_registry
+from habitat_baselines.common.utils import (
+    batch_obs,
+)
+from habitat_baselines.rl.ppo import PPO
+from habitat_baselines.rl.ppo.aimas_reachability_policy import ExploreNavBaselinePolicy
+from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer
 
 
-@baseline_registry.register_trainer(name="ppo")
-class PPOTrainer(BaseRLTrainer):
+from habitat_baselines.rl.ppo.reachability_policy import ReachabilityPolicy
+
+
+@baseline_registry.register_trainer(name="ppoAimas")
+class PPOTrainerAimas(PPOTrainer):
     r"""Trainer class for PPO algorithm
     Paper: https://arxiv.org/abs/1707.06347.
     """
-    supported_tasks = ["Nav-v0"]
-
-    def __init__(self, config=None):
-        super().__init__(config)
-        self.actor_critic = None
-        self.agent = None
-        self.envs = None
-        if config is not None:
-            logger.info(f"config: {config}")
-
-    def _setup_actor_critic_agent(self, ppo_cfg: Config, train: bool=True) \
-        -> None:
+    def _setup_actor_critic_agent(self, ppo_cfg: Config, train: bool=True) -> None:
         r"""Sets up actor critic and agent for PPO.
 
         Args:
@@ -54,14 +50,30 @@ class PPOTrainer(BaseRLTrainer):
         Returns:
             None
         """
-        logger.add_filehandler(self.config.LOG_FILE)
-        print(self.envs.action_spaces[0])
 
-        self.actor_critic = PointNavBaselinePolicy(
+        # Get object index
+        logger.add_filehandler(self.config.LOG_FILE)
+
+        # -- Reachability stuff
+        # First pass add rollouts detector_features memory
+
+        self.reachability_policy = ReachabilityPolicy(self.config.RL.REACHABILITY,
+                                                      self.envs.num_envs,
+                                                      self.envs.observation_spaces[0],
+                                                      device=self.device, with_training=train)
+        self.reachability_policy.to(self.device)
+
+        # Add only intrinsic reward
+        self.only_intrinsic_reward = self.config.RL.REACHABILITY.only_intrinsic_reward
+        # --
+
+        self.actor_critic = ExploreNavBaselinePolicy(
             observation_space=self.envs.observation_spaces[0],
             action_space=self.envs.action_spaces[0],
             hidden_size=ppo_cfg.hidden_size,
             goal_sensor_uuid=self.config.TASK_CONFIG.TASK.GOAL_SENSOR_UUID,
+            detector_config=self.config.DETECTOR,
+            device=self.device
         )
         self.actor_critic.to(self.device)
 
@@ -77,52 +89,30 @@ class PPOTrainer(BaseRLTrainer):
             max_grad_norm=ppo_cfg.max_grad_norm,
         )
 
-    def save_checkpoint(self, file_name: str) -> None:
-        r"""Save checkpoint with specified name.
+    def _add_intrinsic_reward(self, batch: dict, actions: torch.tensor, rewards: torch.tensor,
+                              masks: torch.tensor):
 
-        Args:
-            file_name: file name for checkpoint
+        intrinsic_r = self.reachability_policy.act(batch, actions, rewards, masks)
+        rewards.add_(intrinsic_r)
 
-        Returns:
-            None
-        """
-        checkpoint = {
-            "state_dict": self.agent.state_dict(),
-            "config": self.config,
-        }
-        torch.save(
-            checkpoint, os.path.join(self.config.CHECKPOINT_FOLDER, file_name)
-        )
-
-    def load_checkpoint(self, checkpoint_path: str, *args, **kwargs) -> Dict:
-        r"""Load checkpoint of specified path as a dict.
-
-        Args:
-            checkpoint_path: path of target checkpoint
-            *args: additional positional args
-            **kwargs: additional keyword args
-
-        Returns:
-            dict containing checkpoint info
-        """
-        return torch.load(checkpoint_path, *args, **kwargs)
-
-    def _add_intrinsic_reward(self, batch: dict, actions: torch.tensor,
-                              rewards: torch.tensor, masks: torch.tensor):
         return rewards
 
     def _collect_rollout_step(
-        self, rollouts, current_episode_reward, episode_rewards, episode_counts
+        self, rollouts, current_episode_reward, current_episode_go_reward,
+        episode_rewards, episode_go_rewards, episode_counts
     ):
         pth_time = 0.0
         env_time = 0.0
 
         t_sample_action = time.time()
         # sample actions
+
         with torch.no_grad():
             step_observation = {
                 k: v[rollouts.step] for k, v in rollouts.observations.items()
             }
+            # Collect detector features
+            step_observation.pop("detector_features")
 
             (
                 values,
@@ -135,6 +125,12 @@ class PPOTrainer(BaseRLTrainer):
                 rollouts.prev_actions[rollouts.step],
                 rollouts.masks[rollouts.step],
             )
+
+        detections = step_observation["r_features"]
+
+        # Add to rollout memory to do inference with detector just once
+        rollouts.observations["detector_features"][rollouts.step].copy_(
+            detections)
 
         pth_time += time.time() - t_sample_action
 
@@ -154,7 +150,14 @@ class PPOTrainer(BaseRLTrainer):
             [[0.0] if done else [1.0] for done in dones], dtype=torch.float
         )
 
+        current_episode_go_reward += rewards
+        episode_go_rewards += (1 - masks) * current_episode_go_reward
+        current_episode_go_reward *= masks
+
         # -- Add intrinsic Reward
+        if self.only_intrinsic_reward:
+            rewards.zero_()
+
         rewards = self._add_intrinsic_reward(batch, actions, rewards, masks)
 
         current_episode_reward += rewards
@@ -176,34 +179,6 @@ class PPOTrainer(BaseRLTrainer):
 
         return pth_time, env_time, self.envs.num_envs
 
-    def _update_agent(self, ppo_cfg, rollouts):
-        t_update_model = time.time()
-        with torch.no_grad():
-            last_observation = {
-                k: v[-1] for k, v in rollouts.observations.items()
-            }
-            next_value = self.actor_critic.get_value(
-                last_observation,
-                rollouts.recurrent_hidden_states[-1],
-                rollouts.prev_actions[-1],
-                rollouts.masks[-1],
-            ).detach()
-
-        rollouts.compute_returns(
-            next_value, ppo_cfg.use_gae, ppo_cfg.gamma, ppo_cfg.tau
-        )
-
-        value_loss, action_loss, dist_entropy = self.agent.update(rollouts)
-
-        rollouts.after_update()
-
-        return (
-            time.time() - t_update_model,
-            value_loss,
-            action_loss,
-            dist_entropy,
-        )
-
     def train(self) -> None:
         r"""Main method for training PPO.
 
@@ -223,7 +198,7 @@ class PPOTrainer(BaseRLTrainer):
         )
         if not os.path.isdir(self.config.CHECKPOINT_FOLDER):
             os.makedirs(self.config.CHECKPOINT_FOLDER)
-        self._setup_actor_critic_agent(ppo_cfg)
+        self._setup_actor_critic_agent(ppo_cfg, train=True)
         logger.info(
             "agent number of parameters: {}".format(
                 sum(param.numel() for param in self.agent.parameters())
@@ -243,7 +218,8 @@ class PPOTrainer(BaseRLTrainer):
         batch = batch_obs(observations)
 
         for sensor in rollouts.observations:
-            rollouts.observations[sensor][0].copy_(batch[sensor])
+            if sensor in batch:
+                rollouts.observations[sensor][0].copy_(batch[sensor])
 
         # batch and observations may contain shared PyTorch CUDA
         # tensors.  We must explicitly clear them here otherwise
@@ -252,9 +228,12 @@ class PPOTrainer(BaseRLTrainer):
         observations = None
 
         episode_rewards = torch.zeros(self.envs.num_envs, 1)
+        episode_go_rewards = torch.zeros(self.envs.num_envs, 1)  # Grid oracle rewars
         episode_counts = torch.zeros(self.envs.num_envs, 1)
         current_episode_reward = torch.zeros(self.envs.num_envs, 1)
+        current_episode_go_reward = torch.zeros(self.envs.num_envs, 1) # Grid oracle rewars
         window_episode_reward = deque(maxlen=ppo_cfg.reward_window_size)
+        window_episode_go_reward = deque(maxlen=ppo_cfg.reward_window_size)
         window_episode_counts = deque(maxlen=ppo_cfg.reward_window_size)
 
         t_start = time.time()
@@ -284,7 +263,9 @@ class PPOTrainer(BaseRLTrainer):
                     delta_pth_time, delta_env_time, delta_steps = self._collect_rollout_step(
                         rollouts,
                         current_episode_reward,
+                        current_episode_go_reward,
                         episode_rewards,
+                        episode_go_rewards,
                         episode_counts,
                     )
                     pth_time += delta_pth_time
@@ -297,12 +278,13 @@ class PPOTrainer(BaseRLTrainer):
                 pth_time += delta_pth_time
 
                 window_episode_reward.append(episode_rewards.clone())
+                window_episode_go_reward.append(episode_go_rewards.clone())
                 window_episode_counts.append(episode_counts.clone())
 
                 losses = [value_loss, action_loss]
                 stats = zip(
-                    ["count", "reward"],
-                    [window_episode_counts, window_episode_reward],
+                    ["count", "reward", "reward_go"],
+                    [window_episode_counts, window_episode_reward, window_episode_go_reward],
                 )
                 deltas = {
                     k: (
@@ -316,6 +298,10 @@ class PPOTrainer(BaseRLTrainer):
 
                 writer.add_scalar(
                     "reward", deltas["reward"] / deltas["count"], count_steps
+                )
+
+                writer.add_scalar(
+                    "reward_go", deltas["reward_go"] / deltas["count"], count_steps
                 )
 
                 writer.add_scalars(
@@ -342,15 +328,19 @@ class PPOTrainer(BaseRLTrainer):
                     window_rewards = (
                         window_episode_reward[-1] - window_episode_reward[0]
                     ).sum()
+                    window_go_rewards = (
+                        window_episode_go_reward[-1] - window_episode_go_reward[0]
+                    ).sum()
                     window_counts = (
                         window_episode_counts[-1] - window_episode_counts[0]
                     ).sum()
 
                     if window_counts > 0:
                         logger.info(
-                            "Average window size {} reward: {:3f}".format(
+                            "Average window size {} reward: {:3f} reward_go: {:3f}".format(
                                 len(window_episode_reward),
                                 (window_rewards / window_counts).item(),
+                                (window_go_rewards / window_counts).item(),
                             )
                         )
                     else:
@@ -389,9 +379,9 @@ class PPOTrainer(BaseRLTrainer):
 
         ppo_cfg = config.RL.PPO
 
-        config.defrost()
-        config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
-        config.freeze()
+        # config.defrost()
+        # config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
+        # config.freeze()
 
         if len(self.config.VIDEO_OPTION) > 0:
             config.defrost()
@@ -401,9 +391,9 @@ class PPOTrainer(BaseRLTrainer):
 
         logger.info(f"env config: {config}")
         self.envs = construct_envs(
-            self.config, get_env_class(self.config.ENV_NAME)
+            config, get_env_class(self.config.ENV_NAME)
         )
-        self._setup_actor_critic_agent(ppo_cfg)
+        self._setup_actor_critic_agent(ppo_cfg, train=False)
 
         self.agent.load_state_dict(ckpt_dict["state_dict"])
         self.actor_critic = self.agent.actor_critic
@@ -423,6 +413,9 @@ class PPOTrainer(BaseRLTrainer):
         batch = batch_obs(observations, self.device)
 
         current_episode_reward = torch.zeros(
+            self.envs.num_envs, 1, device=self.device
+        )
+        current_episode_go_reward = torch.zeros(
             self.envs.num_envs, 1, device=self.device
         )
 
@@ -480,9 +473,13 @@ class PPOTrainer(BaseRLTrainer):
                 rewards, dtype=torch.float, device=self.device
             ).unsqueeze(1)
 
+            current_episode_go_reward += rewards
+
             # -- Add intrinsic Reward
-            rewards = self._add_intrinsic_reward(batch, actions, rewards,
-                                                 not_done_masks)
+            if self.only_intrinsic_reward:
+                rewards.zero_()
+
+            rewards = self._add_intrinsic_reward(batch, actions, rewards, not_done_masks)
 
             current_episode_reward += rewards
             next_episodes = self.envs.current_episodes()
@@ -505,7 +502,9 @@ class PPOTrainer(BaseRLTrainer):
                         infos[i][self.metric_uuid] > 0
                     )
                     episode_stats["reward"] = current_episode_reward[i].item()
+                    episode_stats["reward_go"] = current_episode_go_reward[i].item()
                     current_episode_reward[i] = 0
+                    current_episode_go_reward[i] = 0
                     # use scene_id + episode_id as unique id for storing stats
                     stats_episodes[
                         (
@@ -560,10 +559,12 @@ class PPOTrainer(BaseRLTrainer):
         num_episodes = len(stats_episodes)
 
         episode_reward_mean = aggregated_stats["reward"] / num_episodes
+        episode_go_reward_mean = aggregated_stats["reward_go"] / num_episodes
         episode_metric_mean = aggregated_stats[self.metric_uuid] / num_episodes
         episode_success_mean = aggregated_stats["success"] / num_episodes
 
         logger.info(f"Average episode reward: {episode_reward_mean:.6f}")
+        logger.info(f"Average episode reward GO: {episode_go_reward_mean:.6f}")
         logger.info(f"Average episode success: {episode_success_mean:.6f}")
         logger.info(
             f"Average episode {self.metric_uuid}: {episode_metric_mean:.6f}"
@@ -571,7 +572,7 @@ class PPOTrainer(BaseRLTrainer):
 
         writer.add_scalars(
             "eval_reward",
-            {"average reward": episode_reward_mean},
+            {"average reward": episode_reward_mean, "average go reward": episode_go_reward_mean},
             checkpoint_index,
         )
         writer.add_scalars(
@@ -584,5 +585,8 @@ class PPOTrainer(BaseRLTrainer):
             {"average success": episode_success_mean},
             checkpoint_index,
         )
-
+        print(f"[{checkpoint_index}] average reward", episode_reward_mean)
+        print(f"[{checkpoint_index}] average reward GO", episode_go_reward_mean)
+        print(f"[{checkpoint_index}] average {self.metric_uuid}", episode_metric_mean)
+        print(f"[{checkpoint_index}] average success", episode_success_mean)
         self.envs.close()

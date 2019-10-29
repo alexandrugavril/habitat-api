@@ -82,6 +82,38 @@ _C.RL.PPO.gamma = 0.99
 _C.RL.PPO.tau = 0.95
 _C.RL.PPO.reward_window_size = 50
 # -----------------------------------------------------------------------------
+# REACHABILITY NETWORK CONFIG
+# -----------------------------------------------------------------------------
+_C.RL.REACHABILITY = CN()
+_C.RL.REACHABILITY.only_intrinsic_reward = True
+_C.RL.REACHABILITY.experience_buffer_size = 720000
+_C.RL.REACHABILITY.num_recurrent_steps = 1
+_C.RL.REACHABILITY.batch_size = 64
+_C.RL.REACHABILITY.num_train_epochs = 10
+_C.RL.REACHABILITY.feature_extractor_size = 512
+_C.RL.REACHABILITY.memory_size = 200
+_C.RL.REACHABILITY.log_freq = 10
+_C.RL.REACHABILITY.grid_resolution = 1
+
+_C.RL.REACHABILITY.optimizer = "Adam"
+_C.RL.REACHABILITY.optimizer_args = CN()
+_C.RL.REACHABILITY.optimizer_args.lr = 0.0001
+_C.RL.REACHABILITY.optimizer_args.beta_1 = 0.9
+_C.RL.REACHABILITY.optimizer_args.beta_2 = 0.999
+_C.RL.REACHABILITY.optimizer_args.epsilon = 1e-08
+_C.RL.REACHABILITY.optimizer_args.decay = 0.0
+
+# Hyperparams
+_C.RL.REACHABILITY.max_action_distance_k = 5
+_C.RL.REACHABILITY.negative_sample_multiplier = 5
+_C.RL.REACHABILITY.curiosity_bonus_scale_a = 0.030
+_C.RL.REACHABILITY.reward_shift_b = 0.5
+_C.RL.REACHABILITY.novelty_threshold = 0.5
+_C.RL.REACHABILITY.similarity_aggregation = "percentile"
+_C.RL.REACHABILITY.similarity_percentile = 90
+
+
+# -----------------------------------------------------------------------------
 # ORBSLAM2 BASELINE
 # -----------------------------------------------------------------------------
 _C.ORBSLAM2 = CN()
