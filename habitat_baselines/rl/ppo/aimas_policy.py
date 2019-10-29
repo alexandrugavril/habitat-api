@@ -15,6 +15,7 @@ from habitat_baselines.rl.models.rnn_state_encoder import RNNStateEncoder
 from habitat_baselines.rl.models.aimas_cnn import AimasCNN
 
 from habitat_baselines.rl.ppo.policy import Policy, Net
+from habitat.tasks.nav.nav_task_multi_goal import CLASSES
 
 from yolov3.models import Darknet
 from yolov3.utils import utils as yolo_utils
@@ -87,7 +88,8 @@ class ObjectClassNavBaselineNet(Net):
         x = [target_encoding]
 
         if not self.is_blind:
-            perception_embed = self.visual_encoder(observations)
+            perception_embed = self.visual_encoder(observations,
+                                                   target_encoding)
             x = [perception_embed] + x
 
         x = torch.cat(x, dim=1)
@@ -143,8 +145,19 @@ class YoloDetector:
         boxes[:, 3] = ((boxes[:, 3] - pad_y // 2) / unpad_h) * orig_h
         return boxes
 
+    @staticmethod
+    def class_selector():
+        with open("yolov3/data/coco.names", "r") as f:
+            yolo_classes = f.readlines()
+            yolo_classes = [x.strip() for x in yolo_classes]
+
+        indexer = torch.zeros(len(CLASSES), len(yolo_classes)).bool()
+
+        for i, (k, v) in enumerate(CLASSES.items()):
+            indexer[i, yolo_classes.index(v)] = 1
+        return indexer
+
     def detect(self, rgb_img):
-        print("Detect:", self.no_detects)
         self.no_detects += 1
 
         max_batch = 128
@@ -166,18 +179,18 @@ class YoloDetector:
 
                 ordd = (0, 1, 4, 2, 3)
 
-                b1 = b1.view(bs, 3, 8, 8, 85).permute(*ordd).contiguous()\
-                    .view(bs, -1, 8, 8)
-                b2 = b2.view(bs, 3, 16, 16, 85).permute(*ordd).contiguous()\
-                    .view(bs, -1, 16, 16)
-                b3 = b3.view(bs, 3, 32, 32, 85).permute(*ordd).contiguous()\
-                    .view(bs, -1, 32, 32)
+                b1 = b1.view(bs, 3, 8, 8, 85).permute(*ordd).contiguous().view(bs, -1, 8, 8)
+                b2 = b2.view(bs, 3, 16, 16, 85).permute(*ordd).contiguous().view(bs, -1, 16, 16)
+                b3 = b3.view(bs, 3, 32, 32, 85).permute(*ordd).contiguous().view(bs, -1, 32, 32)
 
                 b1 = self.b1_scale(b1)
                 b2 = self.b2_scale(b2)
                 b3 = self.b3_scale(b3)
 
-                out = torch.cat([b1, b2, b3], dim=1)
+                out = (b1 + b2 + b3) / 3
+                out = out.view(bs, 3, 85, 32, 32)
+                out = out.mean(dim=1)#.permute(0, 3, 1, 2)
+                # out = torch.cat([b1, b2, b3], dim=1)
                 multi_batch.append(out)
 
         if len(multi_batch) > 1:
@@ -185,7 +198,7 @@ class YoloDetector:
         else:
             out = multi_batch[0]
 
-        out.detach_()
+        out = out.detach()
         return out
 
     def get_bounding_boxes(self, img, display=False):

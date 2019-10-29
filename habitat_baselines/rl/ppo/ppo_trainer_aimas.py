@@ -4,30 +4,19 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
-import os
 import time
-from collections import deque
-from typing import Dict, List
-
+from gym import spaces
 import numpy as np
 import torch
-from torch.optim.lr_scheduler import LambdaLR
 
 from habitat import Config, logger
-from habitat.utils.visualizations.utils import observations_to_image
-from habitat_baselines.common.base_trainer import BaseRLTrainer
 from habitat_baselines.common.baseline_registry import baseline_registry
-from habitat_baselines.common.env_utils import construct_envs
-from habitat_baselines.common.environments import get_env_class
-from habitat_baselines.common.rollout_storage import RolloutStorage
-from habitat_baselines.common.tensorboard_utils import TensorboardWriter
 from habitat_baselines.common.utils import (
     batch_obs,
-    generate_video,
-    linear_decay,
 )
 from habitat_baselines.rl.ppo import PPO
 from habitat_baselines.rl.ppo.aimas_policy import ObjectClassNavBaselinePolicy
+from habitat_baselines.rl.ppo.aimas_policy import YoloDetector
 from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer
 
 
@@ -36,8 +25,8 @@ class PPOTrainerAimas(PPOTrainer):
     r"""Trainer class for PPO algorithm
     Paper: https://arxiv.org/abs/1707.06347.
     """
-
-    def _setup_actor_critic_agent(self, ppo_cfg: Config) -> None:
+    def _setup_actor_critic_agent(self, ppo_cfg: Config, train: bool=True) \
+        -> None:
         r"""Sets up actor critic and agent for PPO.
 
         Args:
@@ -50,7 +39,20 @@ class PPOTrainerAimas(PPOTrainer):
         # torch.backends.cudnn.enabled = True
         torch.cuda.set_device(self.device.index)
 
+        # Get object index
         logger.add_filehandler(self.config.LOG_FILE)
+
+        # First pass add rollouts detector_features memory
+        self.envs.observation_spaces[0].spaces["detector_features"] = \
+            spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=(765 // (3 * 3), 32, 32),
+            dtype=np.float32,
+        )
+
+        # generate feature convertor to Yolo class
+        self.detector_class_select = YoloDetector.class_selector()
 
         self.actor_critic = ObjectClassNavBaselinePolicy(
             observation_space=self.envs.observation_spaces[0],
@@ -87,6 +89,8 @@ class PPOTrainerAimas(PPOTrainer):
             step_observation = {
                 k: v[rollouts.step] for k, v in rollouts.observations.items()
             }
+            # Collect detector features
+            step_observation.pop("detector_features")
 
             (
                 values,
@@ -100,7 +104,11 @@ class PPOTrainerAimas(PPOTrainer):
                 rollouts.masks[rollouts.step],
             )
 
-        # First pass
+        detections = step_observation["detector_features"]
+
+        # Add to rollout memory to do inference with detector just once
+        rollouts.observations["detector_features"][rollouts.step].copy_(
+            detections)
 
         pth_time += time.time() - t_sample_action
 
@@ -115,6 +123,19 @@ class PPOTrainerAimas(PPOTrainer):
         batch = batch_obs(observations)
         rewards = torch.tensor(rewards, dtype=torch.float)
         rewards = rewards.unsqueeze(1)
+
+        # Add Reward from detection
+
+        pred_conf = detections[:, 4]
+        pred_cls = detections[:, 5:]
+
+        detect_class = self.detector_class_select[
+            batch["goalclass"].nonzero()[:, 1]]
+        class_weight = pred_cls[detect_class]
+        reward_class = class_weight.view(class_weight.size(0), -1).mean(dim=1)
+
+        # rewards += reward_class.unsqueeze(1).cpu()
+        #
 
         masks = torch.tensor(
             [[0.0] if done else [1.0] for done in dones], dtype=torch.float

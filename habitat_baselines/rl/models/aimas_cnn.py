@@ -35,6 +35,9 @@ class AimasCNN(nn.Module):
         else:
             self._n_input_depth = 0
 
+        self._no_classes = observation_space.spaces["goalclass"].shape[0]
+        self._detector_channels = 765 // (3 * 3)
+
         # kernel size for different CNN layers
         self._cnn_layers_kernel_size = [(8, 8), (4, 4), (3, 3)]
 
@@ -81,9 +84,20 @@ class AimasCNN(nn.Module):
                 ),
                 nn.ReLU(True)
             )
+
+            self.detector_cnn = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=self._detector_channels + self._no_classes,
+                    out_channels=64,
+                    kernel_size=1,
+                    stride=1,
+                ),
+                nn.ReLU(True),
+            )
+
             self.cnn_2 = nn.Sequential(
                 nn.Conv2d(
-                    in_channels=64 + 765,
+                    in_channels=64 + 64,
                     out_channels=128,
                     kernel_size=self._cnn_layers_kernel_size[2],
                     stride=self._cnn_layers_stride[2],
@@ -145,7 +159,7 @@ class AimasCNN(nn.Module):
     def is_blind(self):
         return self._n_input_rgb + self._n_input_depth == 0
 
-    def forward(self, observations):
+    def forward(self, observations, target_encoding):
         cnn_input = []
         if self._n_input_rgb > 0:
             rgb_observations = observations["rgb"]
@@ -172,7 +186,17 @@ class AimasCNN(nn.Module):
             detections = self.detector.detect(rgb_observations)
             observations["detector_features"] = detections
 
-        detections.detach_()
+        detections = detections.detach()
+
+        # Add target_encoding
+        b, c, w, h = detections.size()
+        b, tc = target_encoding.size()
+        target_encoding = target_encoding.view(b, tc, 1, 1)
+        target_encoding = target_encoding.expand(b, tc, w, h)
+
+        detections = torch.cat([detections, target_encoding], dim=1)
+        detections = self.detector_cnn(detections)
+
         x = torch.cat([detections, x], dim=1)
 
         x = self.cnn_2(x)

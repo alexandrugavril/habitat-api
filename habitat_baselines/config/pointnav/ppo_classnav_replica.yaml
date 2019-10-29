@@ -4,13 +4,13 @@ ENV_NAME: "NavObjectRLEnv"
 SIMULATOR_GPU_ID: 3
 TORCH_GPU_ID: 3
 VIDEO_OPTION: ["disk", "tensorboard"]
-TENSORBOARD_DIR: "results/class_nav/tb"
-VIDEO_DIR: "results/class_nav/video_dir"
+TENSORBOARD_DIR: "results/class_nav_2/tb"
+VIDEO_DIR: "results/class_nav_2/video_dir"
 TEST_EPISODE_COUNT: 2
-EVAL_CKPT_PATH_DIR: "results/class_nav/checkpoints"
+EVAL_CKPT_PATH_DIR: "results/class_nav_2/checkpoints"
 NUM_PROCESSES: 13
 SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"]
-CHECKPOINT_FOLDER: "results/class_nav/checkpoints"
+CHECKPOINT_FOLDER: "results/class_nav_2/checkpoints"
 NUM_UPDATES: 10000
 LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
