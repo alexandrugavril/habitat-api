@@ -55,7 +55,6 @@ class PPOTrainer(BaseRLTrainer):
             None
         """
         logger.add_filehandler(self.config.LOG_FILE)
-        print(self.envs.action_spaces[0])
 
         self.actor_critic = PointNavBaselinePolicy(
             observation_space=self.envs.observation_spaces[0],

@@ -30,6 +30,7 @@ class ExploreNavBaselinePolicy(Policy):
         detector_config,
         device,
         hidden_size=512,
+        reachability_net=None
     ):
         super().__init__(
             ExploreNavBaselineNet(

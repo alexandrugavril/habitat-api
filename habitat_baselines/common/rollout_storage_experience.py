@@ -7,6 +7,9 @@
 from collections import defaultdict
 
 import torch
+import numpy as np
+
+from habitat import Config, logger
 
 
 class ObsExperienceRollout:
@@ -28,19 +31,20 @@ class ObsExperienceRollout:
         num_steps = all_num_steps // num_envs
 
         for sensor in observation_space.spaces:
-            self.observations[sensor] = torch.zeros(
+            self.observations[sensor] = torch.ByteTensor(
                 num_steps,
                 num_envs,
                 *observation_space.spaces[sensor].shape
             )
+            self.observations[sensor].zero_()
 
-        self.masks = torch.ones(num_steps + 1, num_envs, 1).long()
+        self.masks = torch.ByteTensor(num_steps, num_envs, 1)
+        self.masks.fill_(1)
 
         self.all_num_steps = all_num_steps
         self.num_steps = num_steps
         self.device = device
 
-        self.to(device)
         self.val_mask = torch.zeros_like(self.masks)
         self.has_validation = False
         self.val_pairs = []
@@ -63,7 +67,8 @@ class ObsExperienceRollout:
             self.observations[sensor][step].copy_(
                 observations[sensor]
             )
-        self.masks[step].copy_(masks)
+
+        self.masks[step].copy_(masks.unsqueeze(1))
 
         self.step = (self.step + 1) % self.num_steps
 
@@ -71,10 +76,11 @@ class ObsExperienceRollout:
         for sensor in self.observations:
             self.observations[sensor].zero_()
 
-        self.masks.zero_()
+        self.masks.fill_(1)
         self.val_mask.zero_()
         self.val_pairs = []
         self.has_validation = False
+        self.step = 0
 
     def recurrent_generator(self, batch_size):
         num_steps = self.masks.size(0)
@@ -137,9 +143,10 @@ class ObsExperienceRollout:
         perm = torch.randperm(len(idxes))
 
         rr_steps = torch.zeros_like(masks).long()
-        neg_mask = 1 - masks
+        dones = 1 - masks
+
         for i in range(num_steps - 1)[::-1]:
-            rr_steps[i] = (rr_steps[i + 1] + 1) * (neg_mask[i + 1])
+            rr_steps[i] = (rr_steps[i + 1] + 1) * (masks[i + 1])
 
         idxes = idxes[perm]
         rr_steps = rr_steps.view(-1)[perm]
@@ -150,12 +157,13 @@ class ObsExperienceRollout:
         positive_label = []
 
         # Approximation of steps lost
-        steps_lost = masks.sum() + masks.sum() * neg_dist * 0.5
+        steps_lost = dones.sum() + dones.sum() * neg_dist * 0.5
+        logger.info(f"[APPROXIMATION] Steps lost {steps_lost}")
 
-        no_val_batches = (len(idxes) - steps_lost) // batch_size
-
-        if has_validation:
-            pass
+        no_val_batches = int((len(idxes) - steps_lost) // batch_size *
+                             val_split)
+        no_val_batches = np.clip(no_val_batches, 1,
+                                 len(idxes) // batch_size * 0.9)
 
         for (stp, ie), max_stp, pos in zip(idxes, rr_steps, positive):
             if has_validation:
@@ -204,6 +212,9 @@ class ObsExperienceRollout:
                         if len(val_pairs) >= no_val_batches:
                             has_validation = True
                             self.has_validation = True
+                        o1 = defaultdict(list)
+                        o2 = defaultdict(list)
+                        positive_label = []
                         continue
 
                 yield (o1, o2, positive_label)

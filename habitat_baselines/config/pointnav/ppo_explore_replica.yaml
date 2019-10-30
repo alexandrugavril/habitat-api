@@ -1,16 +1,16 @@
-BASE_TASK_CONFIG_PATH: "configs/tasks/classnav_replica.yaml"
-TRAINER_NAME: "ppoAimas"
+BASE_TASK_CONFIG_PATH: "configs/tasks/explore_replica.yaml"
+TRAINER_NAME: "ppoAimasReachability"
 ENV_NAME: "NavRLExploration"
 SIMULATOR_GPU_ID: 3
 TORCH_GPU_ID: 3
 VIDEO_OPTION: ["disk", "tensorboard"]
-TENSORBOARD_DIR: "results/explore/tb"
-VIDEO_DIR: "results/explore/video_dir"
+TENSORBOARD_DIR: "results/explore2/tb"
+VIDEO_DIR: "results/explore2/video_dir"
 TEST_EPISODE_COUNT: 2
-EVAL_CKPT_PATH_DIR: "results/explore/checkpoints"
-NUM_PROCESSES: 2
+EVAL_CKPT_PATH_DIR: "results/explore2/checkpoints"
+NUM_PROCESSES: 13
 SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"]
-CHECKPOINT_FOLDER: "results/explore/checkpoints"
+CHECKPOINT_FOLDER: "results/explore2/checkpoints"
 NUM_UPDATES: 10000
 LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
@@ -37,21 +37,17 @@ RL:
 
   REACHABILITY:
     only_intrinsic_reward: True
-    experience_buffer_size: 720000
+    experience_buffer_size: 719992
     num_recurrent_steps: 1
     batch_size: 64
     num_train_epochs: 10
     feature_extractor_size: 512
     memory_size: 200
-    log_freq: 10
+    log_freq: 100
     grid_resolution: 1
     optimizer: "Adam"
     optimizer_args:
-      lr: 0.0001
-      beta_1: 0.9
-      beta_2: 0.999
-      epsilon: 1e-08
-      decay: 0.0
+      lr: 0.00025
     max_action_distance_k: 5
     negative_sample_multiplier: 5
     curiosity_bonus_scale_a: 0.030

@@ -20,6 +20,7 @@ class ReachabilityPolicy(nn.Module):
         super().__init__()
 
         # Get config param:
+        self.is_training_mode = cfg.train
         self.experience_buffer_size = cfg.experience_buffer_size // num_envs
         self.with_training = with_training
         self.similarity_aggregation = cfg.similarity_aggregation
@@ -43,8 +44,7 @@ class ReachabilityPolicy(nn.Module):
                                                 cfg.num_recurrent_steps)
 
         # Initialize reachability feature extractor & network
-        self.rex = ReachabilityFeatures(self.envs.observation_spaces[0],
-                                        pretrained=True)
+        self.rex = ReachabilityFeatures(observation_spaces, pretrained=True)
 
         self.r_net = ReachabilityNet(cfg.feature_extractor_size)
 
@@ -52,49 +52,67 @@ class ReachabilityPolicy(nn.Module):
         self._memory = torch.FloatTensor(num_envs,
                                          cfg.memory_size,
                                          cfg.feature_extractor_size).to(device)
-        self._memory_mask = torch.LongTensor(num_envs)
+        self._memory.zero_()
+
+        self._memory_mask = torch.LongTensor(num_envs).to(device)
+        self._memory_mask.zero_()
 
         # Initialize training params
         if with_training:
             optimizer = getattr(torch.optim, cfg.optimizer)
             self.optimizer = optimizer(
                 list(self.rex.parameters()) + list(self.r_net.parameters()),
-                **cfg.optimizer_args.__dict__
+                **dict(cfg.optimizer_args)
             )
             self.criterion = nn.CrossEntropyLoss()
 
         self._step = 0
+        self.is_trained = False
 
         assert tb_dir is not None, "No tensorboard directory set"
         self.tb_writer = TensorboardWriter(tb_dir, flush_secs=30)
 
     def act(self, batch: dict, actions: torch.tensor, rewards: torch.tensor,
             masks: torch.tensor):
+        masks = masks.squeeze(1)
         self.eval()
 
         a = self.curiosity_bonus_scale_a
         b = self.reward_shift_b
 
         # Add to training memory
-        if self.training and self.with_training:
+        if self.with_training:
             self.rollout.insert(batch, masks)
-
-        # Get similarity scores compared with memory
-        similarity_scores, r_features = self.similarity_to_memory(batch)
-
-        # Calculate intrinsic reward
-        ir = a * (b - similarity_scores)
-
-        # Check if we add this new feature to memory
-        self.add_to_memory(r_features, similarity_scores)
 
         self._step += 1
 
         if self._step % self.experience_buffer_size == 0:
             self.train_step()
 
-        rewards.add_(ir)
-        return ir
+        # Return 0 intrinsic reward until first training or RNet
+        if not self.is_trained:
+            ir = torch.zeros_like(rewards)
+            return ir
+
+        # Get similarity scores compared with memory
+        similarity_scores, r_features = self.similarity_to_memory(batch)
+
+        # Calculate intrinsic reward
+        # Only for running episodes
+        ir = a * (b - similarity_scores) * masks.to(self.device)
+        # Check if we add this new feature to memory
+        self.add_to_memory(r_features, similarity_scores)
+
+        # Reset memory for new episodes
+        dones = masks == 0
+        self._memory[dones] *= 0
+        self._memory_mask[dones] *= 0
+
+        return ir.to(rewards.device).unsqueeze(1)
+
+    def reset_memory(self):
+        self._memory_mask.zero_()
+        self._memory.zero_()
 
     def add_to_memory(self, obs_features, similarities):
         """
@@ -114,6 +132,7 @@ class ReachabilityPolicy(nn.Module):
 
         # Select random index if memory is full or last empty idx
         rand_idx = torch.randint(mem_size, (no_envs,), device=device)
+
         # increase non empty idx
         mem_mask[~full_mem & add_mask] += 1
         add_idx = full_mem * rand_idx + (~full_mem) * (mem_mask - 1)
@@ -149,6 +168,7 @@ class ReachabilityPolicy(nn.Module):
                                                         positive_dist,
                                                         negative_dist)
             for i, (o1, o2, positive_label) in enumerate(dataset):
+                positive_label = positive_label.to(self.device)
                 o1_feat = rex(o1)
                 o2_feat = rex(o2)
 
@@ -162,15 +182,22 @@ class ReachabilityPolicy(nn.Module):
                 train_loss += loss.item()
                 if (i + 1) % log_freq == 0:
                     train_loss = train_loss / log_freq
+
+                    # Last batch acc
+                    acc = (r_scores.max(dim=1)[1] == positive_label).sum().item() / float(len(
+                        positive_label))
+
                     logger.info(
                         f"[TRAIN] Epoch: {epoch} | iter {i} | "
-                        f"loss: {train_loss}"
+                        f"loss: {train_loss} (last batch acc: {acc})"
                     )
                     writer.add_scalar("train_loss", train_loss, train_step)
                     train_loss = 0
 
                 train_step += 1
                 num_batches += 1
+
+            assert num_batches > 0, "Number of training batches is 0"
 
             # Validate
             self.eval()
@@ -179,6 +206,8 @@ class ReachabilityPolicy(nn.Module):
             num_items = 0
             dataset = self.rollout.get_validation_pairs()
             for i, (o1, o2, positive_label) in enumerate(dataset):
+                positive_label = positive_label.to(self.device)
+
                 o1_feat = rex(o1)
                 o2_feat = rex(o2)
 
@@ -192,7 +221,7 @@ class ReachabilityPolicy(nn.Module):
                 num_items += len(positive_label)
 
             val_loss = np.mean(val_loss)
-            mean_acc = acc / float(num_items)
+            mean_acc = val_acc / float(num_items)
             logger.info(
                 f"[VAL] Epoch: {epoch} | loss {val_loss} |"
                 f" ACC : {mean_acc}"
@@ -204,9 +233,15 @@ class ReachabilityPolicy(nn.Module):
             logger.info(f"Num batches: train {num_batches} /"
                         f" eval {num_items// batch_size}")
 
+        self.is_trained = True
+
+        # Reset train memory
+        self.rollout.reset()
+
     def similarity_to_memory(self, obs: dict):
         mem = self._memory
         mem_mask = self._memory_mask
+
         obs_features = self.rex(obs)
 
         similarities = torch.zeros(obs_features.size(0), device=self.device)
@@ -215,26 +250,29 @@ class ReachabilityPolicy(nn.Module):
 
         crt_features = []
         mem_features = []
+
         for ienv in range(mem.size(0)):
             crt_features.append(obs_features[ienv].unsqueeze(0).expand(
                 mem_mask[ienv], feat_size
             ))
-            mem_features.append(mem[ienv, :mem_mask])
+            mem_features.append(mem[ienv, :mem_mask[ienv]])
 
         crt_features = torch.cat(crt_features, dim=0)
         mem_features = torch.cat(mem_features, dim=0)
 
-        r_scores = self.r_net(crt_features, mem_features)  # Without softmax
-        r_scores = F.softmax(r_scores)
-        r_scores = r_scores[:, 1]  # 0 for negative 1 for positive
+        if len(mem_features) > 0:
+            r_scores = self.r_net(crt_features, mem_features)  # Without softmax
+            r_scores = F.softmax(r_scores)
+            r_scores = r_scores[:, 1]  # 0 for negative 1 for positive
 
-        st_idx = 0
-        for ienv, end_idx in enumerate(mem_mask.cumsum(0)):
-            env_scores = r_scores[st_idx: end_idx]
-            env_score = self.similarity_score(env_scores.cpu().numpy())
-            similarities[ienv] = env_score
+            st_idx = 0
+            for ienv, end_idx in enumerate(mem_mask.cumsum(0)):
+                if st_idx != end_idx:
+                    env_scores = r_scores[st_idx: end_idx]
+                    env_score = self.similarity_score(env_scores.cpu().numpy())
+                    similarities[ienv] = env_score
 
-            st_idx = end_idx
+                    st_idx = end_idx
 
         return similarities, obs_features
 

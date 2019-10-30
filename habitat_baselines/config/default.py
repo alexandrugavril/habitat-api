@@ -85,6 +85,8 @@ _C.RL.PPO.reward_window_size = 50
 # REACHABILITY NETWORK CONFIG
 # -----------------------------------------------------------------------------
 _C.RL.REACHABILITY = CN()
+_C.RL.REACHABILITY.train = True
+_C.RL.REACHABILITY.skip_train_ppo_without_rtrain = True
 _C.RL.REACHABILITY.only_intrinsic_reward = True
 _C.RL.REACHABILITY.experience_buffer_size = 720000
 _C.RL.REACHABILITY.num_recurrent_steps = 1
@@ -98,10 +100,6 @@ _C.RL.REACHABILITY.grid_resolution = 1
 _C.RL.REACHABILITY.optimizer = "Adam"
 _C.RL.REACHABILITY.optimizer_args = CN()
 _C.RL.REACHABILITY.optimizer_args.lr = 0.0001
-_C.RL.REACHABILITY.optimizer_args.beta_1 = 0.9
-_C.RL.REACHABILITY.optimizer_args.beta_2 = 0.999
-_C.RL.REACHABILITY.optimizer_args.epsilon = 1e-08
-_C.RL.REACHABILITY.optimizer_args.decay = 0.0
 
 # Hyperparams
 _C.RL.REACHABILITY.max_action_distance_k = 5

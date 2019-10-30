@@ -34,6 +34,7 @@ class NavRLExplorationEnv(habitat.RLEnv):
         self._previous_action = None
 
         observations = super().reset()
+        self._collected_positions = set()
 
         return observations
 
@@ -65,8 +66,6 @@ class NavRLExplorationEnv(habitat.RLEnv):
         return reward
 
     def _episode_success(self):
-        if self._env.task.is_stop_called:
-            return True
         return False
 
     def get_done(self, observations):

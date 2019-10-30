@@ -29,9 +29,10 @@ class ReachabilityFeatures(nn.Module):
 
     def forward(self, observations):
         resnet = self._net
+        device = resnet.conv1.weight.device
 
         # -- RGB preprocess
-        rgb_observations = observations["rgb"]
+        rgb_observations = observations["rgb"].to(device).float()
         # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
         rgb_observations = rgb_observations.permute(0, 3, 1, 2)
         rgb_observations = rgb_observations / 255.0  # normalize RGB
@@ -40,7 +41,7 @@ class ReachabilityFeatures(nn.Module):
 
         if self.use_depth:
             # -- Depth preprocess
-            depth_observations = observations["depth"]
+            depth_observations = observations["depth"].to(device).float()
             # permute tensor to dimension [BATCH x CHANNEL x HEIGHT X WIDTH]
             depth_observations = depth_observations.permute(0, 3, 1, 2)
             out_depth = self.depth_conv(depth_observations)
@@ -56,6 +57,7 @@ class ReachabilityFeatures(nn.Module):
         x = resnet.layer3(x)
         x = resnet.layer4(x)
 
+        x = resnet.avgpool(x)
         x = torch.flatten(x, 1)
 
         return x
@@ -65,7 +67,7 @@ class ReachabilityNet(nn.Module):
     def __init__(self, observation_space):
         super().__init__()
 
-        self._modules = nn.Sequential(
+        self.extractor = nn.Sequential(
             nn.Linear(observation_space * 2, 512),
             nn.BatchNorm1d(512),
             nn.ReLU(inplace=True),
@@ -83,7 +85,7 @@ class ReachabilityNet(nn.Module):
 
     def forward(self, o1, o2):
         x = torch.cat([o1, o2], dim=1)
-        x = self._modules(x)
+        x = self.extractor(x)
 
         return x
 

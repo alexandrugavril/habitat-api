@@ -36,8 +36,8 @@ from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer
 from habitat_baselines.rl.ppo.reachability_policy import ReachabilityPolicy
 
 
-@baseline_registry.register_trainer(name="ppoAimas")
-class PPOTrainerAimas(PPOTrainer):
+@baseline_registry.register_trainer(name="ppoAimasReachability")
+class PPOTrainerReachabilityAimas(PPOTrainer):
     r"""Trainer class for PPO algorithm
     Paper: https://arxiv.org/abs/1707.06347.
     """
@@ -60,12 +60,15 @@ class PPOTrainerAimas(PPOTrainer):
         self.reachability_policy = ReachabilityPolicy(self.config.RL.REACHABILITY,
                                                       self.envs.num_envs,
                                                       self.envs.observation_spaces[0],
-                                                      device=self.device, with_training=train)
+                                                      device=self.device, with_training=train,
+                                                      tb_dir=self.config.TENSORBOARD_DIR)
         self.reachability_policy.to(self.device)
 
         # Add only intrinsic reward
         self.only_intrinsic_reward = self.config.RL.REACHABILITY.only_intrinsic_reward
-        # --
+        # Train PPO after rtrain
+        self.skip_train_ppo_without_rtrain = \
+            self.config.RL.REACHABILITY.skip_train_ppo_without_rtrain
 
         self.actor_critic = ExploreNavBaselinePolicy(
             observation_space=self.envs.observation_spaces[0],
@@ -91,7 +94,6 @@ class PPOTrainerAimas(PPOTrainer):
 
     def _add_intrinsic_reward(self, batch: dict, actions: torch.tensor, rewards: torch.tensor,
                               masks: torch.tensor):
-
         intrinsic_r = self.reachability_policy.act(batch, actions, rewards, masks)
         rewards.add_(intrinsic_r)
 
@@ -111,8 +113,6 @@ class PPOTrainerAimas(PPOTrainer):
             step_observation = {
                 k: v[rollouts.step] for k, v in rollouts.observations.items()
             }
-            # Collect detector features
-            step_observation.pop("detector_features")
 
             (
                 values,
@@ -126,12 +126,6 @@ class PPOTrainerAimas(PPOTrainer):
                 rollouts.masks[rollouts.step],
             )
 
-        detections = step_observation["r_features"]
-
-        # Add to rollout memory to do inference with detector just once
-        rollouts.observations["detector_features"][rollouts.step].copy_(
-            detections)
-
         pth_time += time.time() - t_sample_action
 
         t_step_env = time.time()
@@ -142,6 +136,7 @@ class PPOTrainerAimas(PPOTrainer):
         env_time += time.time() - t_step_env
 
         t_update_stats = time.time()
+
         batch = batch_obs(observations)
         rewards = torch.tensor(rewards, dtype=torch.float)
         rewards = rewards.unsqueeze(1)
@@ -178,6 +173,37 @@ class PPOTrainerAimas(PPOTrainer):
         pth_time += time.time() - t_update_stats
 
         return pth_time, env_time, self.envs.num_envs
+
+    def _update_agent(self, ppo_cfg, rollouts):
+        t_update_model = time.time()
+        with torch.no_grad():
+            last_observation = {
+                k: v[-1] for k, v in rollouts.observations.items()
+            }
+            next_value = self.actor_critic.get_value(
+                last_observation,
+                rollouts.recurrent_hidden_states[-1],
+                rollouts.prev_actions[-1],
+                rollouts.masks[-1],
+            ).detach()
+
+        rollouts.compute_returns(
+            next_value, ppo_cfg.use_gae, ppo_cfg.gamma, ppo_cfg.tau
+        )
+
+        if not self.skip_train_ppo_without_rtrain or self.reachability_policy.is_trained:
+            value_loss, action_loss, dist_entropy = self.agent.update(rollouts)
+        else:
+            value_loss, action_loss, dist_entropy = (0, 0, 0)
+
+        rollouts.after_update()
+
+        return (
+            time.time() - t_update_model,
+            value_loss,
+            action_loss,
+            dist_entropy,
+        )
 
     def train(self) -> None:
         r"""Main method for training PPO.
@@ -251,9 +277,6 @@ class PPOTrainerAimas(PPOTrainer):
             self.config.TENSORBOARD_DIR, flush_secs=self.flush_secs
         ) as writer:
             for update in range(self.config.NUM_UPDATES):
-                if ppo_cfg.use_linear_lr_decay:
-                    lr_scheduler.step()
-
                 if ppo_cfg.use_linear_clip_decay:
                     self.agent.clip_param = ppo_cfg.clip_param * linear_decay(
                         update, self.config.NUM_UPDATES
@@ -275,6 +298,11 @@ class PPOTrainerAimas(PPOTrainer):
                 delta_pth_time, value_loss, action_loss, dist_entropy = self._update_agent(
                     ppo_cfg, rollouts
                 )
+
+                # TODO check if LR is init
+                if ppo_cfg.use_linear_lr_decay:
+                    lr_scheduler.step()
+
                 pth_time += delta_pth_time
 
                 window_episode_reward.append(episode_rewards.clone())
