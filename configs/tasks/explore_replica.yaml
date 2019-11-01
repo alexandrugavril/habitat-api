@@ -1,0 +1,38 @@
+ENVIRONMENT:
+  MAX_EPISODE_STEPS: 500
+SIMULATOR:
+  AGENT_0:
+    SENSORS: ['RGB_SENSOR']
+  HABITAT_SIM_V0:
+    GPU_DEVICE_ID: 0
+  RGB_SENSOR:
+    WIDTH: 128
+    HEIGHT: 128
+  DEPTH_SENSOR:
+    WIDTH: 128
+    HEIGHT: 128
+TASK:
+  TYPE: Nav-v0
+  SUCCESS_DISTANCE: 0.0  # This is extra to goal.radius (0.2 already added to goal radius)
+  SUCCESS_IF_IN_VIEW: True
+  VIEW_FIELD_FACTOR: 0.2
+  POSSIBLE_ACTIONS: ['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT']
+  SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR']
+  POINTGOAL_WITH_GPS_COMPASS_SENSOR:
+    GOAL_FORMAT: "POLAR"
+    DIMENSIONALITY: 2
+  SET_GOAL:
+    GOAL_SELECTION: "RANDOM"
+  GOAL_SENSOR_UUID: pointgoal_with_gps_compass
+  WITH_TARGET_ENCODING: False
+
+  MEASUREMENTS: ['SPL']
+  SPL:
+      SUCCESS_DISTANCE: 0.2
+      TYPE: SPL
+
+DATASET:
+  TYPE: PointNav-v2
+  SPLIT: train
+  DATA_PATH: "../Replica-Dataset/dataset_jsons/{split}/{split}.json.gz"
+  SCENES_DIR: "../Replica-Dataset/"

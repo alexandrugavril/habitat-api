@@ -59,10 +59,17 @@ def construct_envs(
     if len(scenes) > 0:
         random.shuffle(scenes)
 
-        assert len(scenes) >= num_processes, (
-            "reduce the number of processes as there "
-            "aren't enough number of scenes"
-        )
+        if config.MULTIPLY_SCENES:
+            if len(scenes) < num_processes:
+                unique_scenes = scenes
+                scenes = []
+                while len(scenes) < num_processes:
+                    scenes += unique_scenes
+        else:
+            assert len(scenes) >= num_processes, (
+                "reduce the number of processes as there "
+                "aren't enough number of scenes"
+            )
 
     scene_splits = [[] for _ in range(num_processes)]
     for idx, scene in enumerate(scenes):

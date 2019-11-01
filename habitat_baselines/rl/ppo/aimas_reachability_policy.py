@@ -27,21 +27,23 @@ class ExploreNavBaselinePolicy(Policy):
         observation_space,
         action_space,
         goal_sensor_uuid,
-        detector_config,
+        with_target_encoding,
         device,
         hidden_size=512,
-        reachability_net=None
+        reachability_policy=None
     ):
         super().__init__(
             ExploreNavBaselineNet(
                 observation_space=observation_space,
                 hidden_size=hidden_size,
                 goal_sensor_uuid=goal_sensor_uuid,
-                detector_config=detector_config,
+                with_target_encoding=with_target_encoding,
                 device=device
             ),
             action_space.n,
         )
+
+        self.reachability_policy = reachability_policy
 
 
 class ExploreNavBaselineNet(Net):
@@ -50,9 +52,11 @@ class ExploreNavBaselineNet(Net):
     """
 
     def __init__(self, observation_space, hidden_size, goal_sensor_uuid,
-                 detector_config, device):
+                 with_target_encoding, device):
         super().__init__()
         self.goal_sensor_uuid = goal_sensor_uuid
+        self.with_target_encoding = with_target_encoding
+
         self._n_input_goal = observation_space.spaces[
             self.goal_sensor_uuid
         ].shape[0]
@@ -61,7 +65,8 @@ class ExploreNavBaselineNet(Net):
         self.visual_encoder = SimpleCNN(observation_space, hidden_size)
 
         self.state_encoder = RNNStateEncoder(
-            (0 if self.is_blind else self._hidden_size) + self._n_input_goal,
+            (0 if self.is_blind else self._hidden_size) +
+            (self._n_input_goal if with_target_encoding else 0),
             self._hidden_size,
         )
 
@@ -83,8 +88,10 @@ class ExploreNavBaselineNet(Net):
         return observations[self.goal_sensor_uuid]
 
     def forward(self, observations, rnn_hidden_states, prev_actions, masks):
-        target_encoding = self.get_target_encoding(observations)
-        x = [target_encoding]
+        x = []
+        if self.with_target_encoding:
+            target_encoding = self.get_target_encoding(observations)
+            x = [target_encoding]
 
         if not self.is_blind:
             perception_embed = self.visual_encoder(observations)

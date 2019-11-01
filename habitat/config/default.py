@@ -42,6 +42,7 @@ _C.TASK.VIEW_FIELD_FACTOR = 0.2
 _C.TASK.SENSORS = []
 _C.TASK.MEASUREMENTS = []
 _C.TASK.GOAL_SENSOR_UUID = "pointgoal"
+_C.TASK.WITH_TARGET_ENCODING = True
 _C.TASK.POSSIBLE_ACTIONS = ["STOP", "MOVE_FORWARD", "TURN_LEFT", "TURN_RIGHT",
                             "LOOK_UP", "LOOK_DOWN"]
 # -----------------------------------------------------------------------------

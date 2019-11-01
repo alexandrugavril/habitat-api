@@ -57,10 +57,12 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         # -- Reachability stuff
         # First pass add rollouts detector_features memory
 
+        train_reachability = self.config.RL.REACHABILITY.train
         self.reachability_policy = ReachabilityPolicy(self.config.RL.REACHABILITY,
                                                       self.envs.num_envs,
                                                       self.envs.observation_spaces[0],
-                                                      device=self.device, with_training=train,
+                                                      device=self.device,
+                                                      with_training=train_reachability,
                                                       tb_dir=self.config.TENSORBOARD_DIR)
         self.reachability_policy.to(self.device)
 
@@ -75,8 +77,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             action_space=self.envs.action_spaces[0],
             hidden_size=ppo_cfg.hidden_size,
             goal_sensor_uuid=self.config.TASK_CONFIG.TASK.GOAL_SENSOR_UUID,
-            detector_config=self.config.DETECTOR,
-            device=self.device
+            with_target_encoding=self.config.TASK_CONFIG.TASK.WITH_TARGET_ENCODING,
+            device=self.device,
+            reachability_policy=self.reachability_policy
         )
         self.actor_critic.to(self.device)
 
@@ -425,6 +428,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         self.agent.load_state_dict(ckpt_dict["state_dict"])
         self.actor_critic = self.agent.actor_critic
+        self.reachability_policy = self.agent.actor_critic.reachability_policy
 
         # get name of performance metric, e.g. "spl"
         metric_name = self.config.TASK_CONFIG.TASK.MEASUREMENTS[0]
@@ -491,6 +495,13 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             ]
             batch = batch_obs(observations, self.device)
 
+            valid_map_size = [float(ifs["top_down_map"]["valid_map"].sum()) for ifs in infos]
+            discovered_factor = [infos[ix]["top_down_map"]["explored_map"].sum() /
+                                 valid_map_size[ix] for ix in len(infos)]
+
+            seen_factor = [infos[ix]["top_down_map"]["ful_fog_of_war_mask"].sum() /
+                           valid_map_size[ix] for ix in len(infos)]
+
             not_done_masks = torch.tensor(
                 [[0.0] if done else [1.0] for done in dones],
                 dtype=torch.float,
@@ -531,6 +542,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     )
                     episode_stats["reward"] = current_episode_reward[i].item()
                     episode_stats["reward_go"] = current_episode_go_reward[i].item()
+                    episode_stats["map_discovered"] = discovered_factor[i]
+                    episode_stats["map_seen"] = seen_factor[i]
                     current_episode_reward[i] = 0
                     current_episode_go_reward[i] = 0
                     # use scene_id + episode_id as unique id for storing stats
@@ -588,11 +601,15 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         episode_reward_mean = aggregated_stats["reward"] / num_episodes
         episode_go_reward_mean = aggregated_stats["reward_go"] / num_episodes
+        episode_map_discovered = aggregated_stats["map_discovered"] / num_episodes
+        episode_map_seen = aggregated_stats["map_seen"] / num_episodes
         episode_metric_mean = aggregated_stats[self.metric_uuid] / num_episodes
         episode_success_mean = aggregated_stats["success"] / num_episodes
 
         logger.info(f"Average episode reward: {episode_reward_mean:.6f}")
         logger.info(f"Average episode reward GO: {episode_go_reward_mean:.6f}")
+        logger.info(f"Average episode map discovered: {episode_map_discovered:.6f}")
+        logger.info(f"Average episode map seen: {episode_map_seen:.6f}")
         logger.info(f"Average episode success: {episode_success_mean:.6f}")
         logger.info(
             f"Average episode {self.metric_uuid}: {episode_metric_mean:.6f}"
@@ -601,6 +618,16 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         writer.add_scalars(
             "eval_reward",
             {"average reward": episode_reward_mean, "average go reward": episode_go_reward_mean},
+            checkpoint_index,
+        )
+        writer.add_scalars(
+            f"eval_map_discovered",
+            {f"average map discovered": episode_map_discovered},
+            checkpoint_index,
+        )
+        writer.add_scalars(
+            f"eval_map_seen",
+            {f"average map seen": episode_map_seen},
             checkpoint_index,
         )
         writer.add_scalars(
@@ -615,6 +642,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         )
         print(f"[{checkpoint_index}] average reward", episode_reward_mean)
         print(f"[{checkpoint_index}] average reward GO", episode_go_reward_mean)
+        print(f"[{checkpoint_index}] average map discovered", episode_map_discovered)
         print(f"[{checkpoint_index}] average {self.metric_uuid}", episode_metric_mean)
         print(f"[{checkpoint_index}] average success", episode_success_mean)
         self.envs.close()

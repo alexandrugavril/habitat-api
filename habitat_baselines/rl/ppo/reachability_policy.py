@@ -67,7 +67,7 @@ class ReachabilityPolicy(nn.Module):
             self.criterion = nn.CrossEntropyLoss()
 
         self._step = 0
-        self.is_trained = False
+        self.is_trained = torch.BoolTensor([False])  # So as to be saved in checkpoint
 
         assert tb_dir is not None, "No tensorboard directory set"
         self.tb_writer = TensorboardWriter(tb_dir, flush_secs=30)
@@ -86,7 +86,7 @@ class ReachabilityPolicy(nn.Module):
 
         self._step += 1
 
-        if self._step % self.experience_buffer_size == 0:
+        if self.with_training and self._step % self.experience_buffer_size == 0:
             self.train_step()
 
         # Return 0 intrinsic reward until first training or RNet
@@ -94,12 +94,14 @@ class ReachabilityPolicy(nn.Module):
             ir = torch.zeros_like(rewards)
             return ir
 
-        # Get similarity scores compared with memory
-        similarity_scores, r_features = self.similarity_to_memory(batch)
+        with torch.no_grad():
+            # Get similarity scores compared with memory
+            similarity_scores, r_features = self.similarity_to_memory(batch)
 
         # Calculate intrinsic reward
         # Only for running episodes
         ir = a * (b - similarity_scores) * masks.to(self.device)
+
         # Check if we add this new feature to memory
         self.add_to_memory(r_features, similarity_scores)
 
@@ -244,12 +246,15 @@ class ReachabilityPolicy(nn.Module):
 
         obs_features = self.rex(obs)
 
-        similarities = torch.zeros(obs_features.size(0), device=self.device)
+        similarities = torch.ones(obs_features.size(0), device=self.device)
 
         feat_size = obs_features.size(1)
 
         crt_features = []
         mem_features = []
+
+        if self._step % 1200 == 0:
+            print("Mem:", mem_mask)
 
         for ienv in range(mem.size(0)):
             crt_features.append(obs_features[ienv].unsqueeze(0).expand(
@@ -262,7 +267,7 @@ class ReachabilityPolicy(nn.Module):
 
         if len(mem_features) > 0:
             r_scores = self.r_net(crt_features, mem_features)  # Without softmax
-            r_scores = F.softmax(r_scores)
+            r_scores = F.softmax(r_scores, dim=1)
             r_scores = r_scores[:, 1]  # 0 for negative 1 for positive
 
             st_idx = 0

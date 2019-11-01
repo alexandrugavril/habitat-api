@@ -31,7 +31,7 @@ from habitat.tasks.utils import (
 from habitat.utils.visualizations import fog_of_war, maps
 
 MAP_THICKNESS_SCALAR: int = 1250
-
+MAP_INVALID_POINT = 0
 
 def merge_sim_episode_config(
     sim_config: Config, episode: Type[Episode]
@@ -525,6 +525,8 @@ class TopDownMap(Measure):
         self._coordinate_min = maps.COORDINATE_MIN
         self._coordinate_max = maps.COORDINATE_MAX
         self._top_down_map = None
+        self._valid_map = None
+        self._explored_map = None
         self._shortest_path_points = None
         self._cell_scale = (
             self._coordinate_max - self._coordinate_min
@@ -612,6 +614,9 @@ class TopDownMap(Measure):
         self._step_count = 0
         self._metric = None
         self._top_down_map = self.get_original_map()
+        self._valid_map = self._top_down_map != MAP_INVALID_POINT
+        self._explored_map = np.zeros_like(self._valid_map)
+
         agent_position = self._sim.get_agent_state().position
         a_x, a_y = maps.to_grid(
             agent_position[0],
@@ -673,9 +678,15 @@ class TopDownMap(Measure):
         if self._config.FOG_OF_WAR.DRAW:
             clipped_fog_of_war_map = self._clip_map(self._fog_of_war_mask)
 
+        # Tag coord de agent has visited
+        self._explored_map[map_agent_x, map_agent_y] = 1
+
         self._metric = {
             "map": clipped_house_map,
             "fog_of_war_mask": clipped_fog_of_war_map,
+            "ful_fog_of_war_mask": self._fog_of_war_mask,
+            "explored_map": self._explored_map,
+            "valid_map": self._valid_map,
             "agent_map_coord": (
                 map_agent_x - (self._ind_x_min - self._grid_delta),
                 map_agent_y - (self._ind_y_min - self._grid_delta),

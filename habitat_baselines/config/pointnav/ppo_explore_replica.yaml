@@ -37,21 +37,22 @@ RL:
 
   REACHABILITY:
     only_intrinsic_reward: True
-    experience_buffer_size: 719992
+    skip_train_ppo_without_rtrain: True
+    experience_buffer_size: 91000 #719992
     num_recurrent_steps: 1
     batch_size: 64
-    num_train_epochs: 10
+    num_train_epochs: 5 #10
     feature_extractor_size: 512
     memory_size: 200
     log_freq: 100
     grid_resolution: 1
     optimizer: "Adam"
     optimizer_args:
-      lr: 0.00025
+      lr: 0.001 #0.00025
     max_action_distance_k: 5
-    negative_sample_multiplier: 5
-    curiosity_bonus_scale_a: 0.030
+    negative_sample_multiplier: 3
+    curiosity_bonus_scale_a: 0.03 # 0.030 external R
     reward_shift_b: 0.5
-    novelty_threshold: 0.5
+    novelty_threshold: 0.75
     similarity_aggregation: "percentile"
     similarity_percentile: 90
