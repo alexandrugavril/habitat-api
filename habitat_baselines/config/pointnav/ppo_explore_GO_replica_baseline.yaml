@@ -18,7 +18,7 @@ CHECKPOINT_INTERVAL: 50
 COMMIT: "{commit_hash}"
 
 RL:
-  COLLISION_REWARD_ENABLED: True
+  COLLISION_REWARD_ENABLED: False
   PPO:
     # ppo params
     clip_param: 0.1 # Episodic curiosity has some kind of decaying cliprange
