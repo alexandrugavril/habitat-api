@@ -25,6 +25,8 @@ class NavRLExplorationEnv(habitat.RLEnv):
 
         self._previous_action = None
         self._grid_resolution = self._rl_config.REACHABILITY.grid_resolution
+        self._with_collision_reward = self._rl_config.COLLISION_REWARD_ENABLED
+        self._collision_reward = self._rl_config.COLLISION_REWARD
 
         self._collected_positions = set()
 
@@ -40,7 +42,12 @@ class NavRLExplorationEnv(habitat.RLEnv):
 
     def step(self, *args, **kwargs):
         self._previous_action = kwargs["action"]
-        return super().step(*args, **kwargs)
+        observation, reward, done, info = super().step(*args, **kwargs)
+        if self._collision_reward:
+            if info["collisions"]["is_collision"]:
+                reward += self._collision_reward
+
+        return observation, reward, done, info
 
     def get_reward_range(self):
         return (

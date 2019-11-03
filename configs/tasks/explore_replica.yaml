@@ -26,7 +26,7 @@ TASK:
   GOAL_SENSOR_UUID: pointgoal_with_gps_compass
   WITH_TARGET_ENCODING: False
 
-  MEASUREMENTS: ['SPL']
+  MEASUREMENTS: ['SPL', "COLLISIONS"]
   SPL:
       SUCCESS_DISTANCE: 0.2
       TYPE: SPL
