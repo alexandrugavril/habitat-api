@@ -33,10 +33,12 @@ _C.EVAL_CKPT_PATH_DIR = "data/checkpoints"  # path to ckpt or path to ckpts dir
 _C.NUM_PROCESSES = 16
 _C.SENSORS = ["RGB_SENSOR", "DEPTH_SENSOR"]
 _C.CHECKPOINT_FOLDER = "data/checkpoints"
-_C.NUM_UPDATES = 10000
+_C.NUM_UPDATES = 5000
 _C.LOG_INTERVAL = 10
 _C.LOG_FILE = "train.log"
 _C.CHECKPOINT_INTERVAL = 50
+_C.COMMIT = ""
+
 # -----------------------------------------------------------------------------
 # EVAL CONFIG
 # -----------------------------------------------------------------------------
@@ -50,6 +52,9 @@ _C.EVAL.USE_CKPT_CONFIG = True
 _C.RL = CN()
 _C.RL.SUCCESS_REWARD = 10.0
 _C.RL.SLACK_REWARD = -0.01
+_C.RL.COLLISION_REWARD_ENABLED = False
+_C.RL.COLLISION_REWARD = -1
+
 # -----------------------------------------------------------------------------
 # DETECTOR
 _C.DETECTOR = CN()
@@ -66,18 +71,18 @@ _C.DETECTOR.out_size = 32
 # PROXIMAL POLICY OPTIMIZATION (PPO)
 # -----------------------------------------------------------------------------
 _C.RL.PPO = CN()
-_C.RL.PPO.clip_param = 0.2
+_C.RL.PPO.clip_param = 0.1
 _C.RL.PPO.ppo_epoch = 4
-_C.RL.PPO.num_mini_batch = 16
+_C.RL.PPO.num_mini_batch = 4
 _C.RL.PPO.value_loss_coef = 0.5
 _C.RL.PPO.entropy_coef = 0.01
-_C.RL.PPO.lr = 7e-4
+_C.RL.PPO.lr = 2.5e-4
 _C.RL.PPO.eps = 1e-5
 _C.RL.PPO.max_grad_norm = 0.5
-_C.RL.PPO.num_steps = 5
+_C.RL.PPO.num_steps = 256
 _C.RL.PPO.hidden_size = 512
 _C.RL.PPO.use_gae = True
-_C.RL.PPO.use_linear_lr_decay = False
+_C.RL.PPO.use_linear_lr_decay = True
 _C.RL.PPO.use_linear_clip_decay = False
 _C.RL.PPO.gamma = 0.99
 _C.RL.PPO.tau = 0.95
@@ -86,9 +91,9 @@ _C.RL.PPO.reward_window_size = 50
 # REACHABILITY NETWORK CONFIG
 # -----------------------------------------------------------------------------
 _C.RL.REACHABILITY = CN()
-_C.RL.REACHABILITY.train = True
-_C.RL.REACHABILITY.skip_train_ppo_without_rtrain = True
-_C.RL.REACHABILITY.only_intrinsic_reward = True
+_C.RL.REACHABILITY.train = False
+_C.RL.REACHABILITY.skip_train_ppo_without_rtrain = False
+_C.RL.REACHABILITY.only_intrinsic_reward = False
 _C.RL.REACHABILITY.experience_buffer_size = 720000
 _C.RL.REACHABILITY.num_recurrent_steps = 1
 _C.RL.REACHABILITY.batch_size = 64
@@ -100,7 +105,7 @@ _C.RL.REACHABILITY.grid_resolution = 1
 
 _C.RL.REACHABILITY.optimizer = "Adam"
 _C.RL.REACHABILITY.optimizer_args = CN()
-_C.RL.REACHABILITY.optimizer_args.lr = 0.0001
+_C.RL.REACHABILITY.optimizer_args.lr = 0.00025
 
 # Hyperparams
 _C.RL.REACHABILITY.max_action_distance_k = 5

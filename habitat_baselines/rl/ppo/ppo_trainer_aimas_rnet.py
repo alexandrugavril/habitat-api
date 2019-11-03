@@ -497,10 +497,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
             valid_map_size = [float(ifs["top_down_map"]["valid_map"].sum()) for ifs in infos]
             discovered_factor = [infos[ix]["top_down_map"]["explored_map"].sum() /
-                                 valid_map_size[ix] for ix in len(infos)]
+                                 valid_map_size[ix] for ix in range(len(
+                infos))]
 
             seen_factor = [infos[ix]["top_down_map"]["ful_fog_of_war_mask"].sum() /
-                           valid_map_size[ix] for ix in len(infos)]
+                           valid_map_size[ix] for ix in range(len(infos))]
 
             not_done_masks = torch.tensor(
                 [[0.0] if done else [1.0] for done in dones],

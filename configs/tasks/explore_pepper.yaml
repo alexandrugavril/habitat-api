@@ -32,7 +32,4 @@ TASK:
       TYPE: SPL
 
 DATASET:
-  TYPE: PointNav-v2
-  SPLIT: train
-  DATA_PATH: "../Replica-Dataset/dataset_jsons/{split}/{split}.json.gz"
-  SCENES_DIR: "../Replica-Dataset/"
+  TYPE: PepperRobot

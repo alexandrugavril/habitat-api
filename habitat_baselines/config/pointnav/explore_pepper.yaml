@@ -1,4 +1,4 @@
-BASE_TASK_CONFIG_PATH: "configs/tasks/explore_replica.yaml"
+BASE_TASK_CONFIG_PATH: "configs/tasks/explore_pepper.yaml"
 TRAINER_NAME: "ppoAimasReachability"
 ENV_NAME: "NavRLExploration"
 SIMULATOR_GPU_ID: {gpu_id}
