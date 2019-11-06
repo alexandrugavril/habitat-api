@@ -8,6 +8,7 @@ import os
 import time
 from collections import deque
 from typing import Dict, List
+import cv2
 
 import numpy as np
 import torch
@@ -50,36 +51,43 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         Returns:
             None
         """
+        cfg = self.config
 
         # Get object index
-        logger.add_filehandler(self.config.LOG_FILE)
+        logger.add_filehandler(cfg.LOG_FILE)
 
         # -- Reachability stuff
         # First pass add rollouts detector_features memory
-
-        train_reachability = self.config.RL.REACHABILITY.train
-        self.reachability_policy = ReachabilityPolicy(self.config.RL.REACHABILITY,
-                                                      self.envs.num_envs,
-                                                      self.envs.observation_spaces[0],
-                                                      device=self.device,
-                                                      with_training=train_reachability,
-                                                      tb_dir=self.config.TENSORBOARD_DIR)
-        self.reachability_policy.to(self.device)
+        train_reachability = cfg.RL.REACHABILITY.train
+        self.r_enabled = cfg.RL.REACHABILITY.enabled
+        if self.r_enabled:
+            self.r_policy = ReachabilityPolicy(
+                cfg.RL.REACHABILITY, self.envs.num_envs,
+                self.envs.observation_spaces[0], device=self.device,
+                with_training=train_reachability,
+                tb_dir=cfg.TENSORBOARD_DIR
+            )
+            self.r_policy.to(self.device)
+        else:
+            self.r_policy = None
 
         # Add only intrinsic reward
-        self.only_intrinsic_reward = self.config.RL.REACHABILITY.only_intrinsic_reward
+        self.only_intrinsic_reward = cfg.RL.REACHABILITY.only_intrinsic_reward
+
         # Train PPO after rtrain
         self.skip_train_ppo_without_rtrain = \
-            self.config.RL.REACHABILITY.skip_train_ppo_without_rtrain
+            cfg.RL.REACHABILITY.skip_train_ppo_without_rtrain
 
         self.actor_critic = ExploreNavBaselinePolicy(
             observation_space=self.envs.observation_spaces[0],
             action_space=self.envs.action_spaces[0],
             hidden_size=ppo_cfg.hidden_size,
-            goal_sensor_uuid=self.config.TASK_CONFIG.TASK.GOAL_SENSOR_UUID,
-            with_target_encoding=self.config.TASK_CONFIG.TASK.WITH_TARGET_ENCODING,
+            goal_sensor_uuid=cfg.TASK_CONFIG.TASK.GOAL_SENSOR_UUID,
+            with_target_encoding=cfg.TASK_CONFIG.TASK.WITH_TARGET_ENCODING,
             device=self.device,
-            reachability_policy=self.reachability_policy
+            reachability_policy=self.r_policy,
+            visual_encoder=ppo_cfg.visual_encoder,
+            drop_prob=ppo_cfg.visual_encoder_dropout,
         )
         self.actor_critic.to(self.device)
 
@@ -95,10 +103,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             max_grad_norm=ppo_cfg.max_grad_norm,
         )
 
-    def _add_intrinsic_reward(self, batch: dict, actions: torch.tensor, rewards: torch.tensor,
-                              masks: torch.tensor):
-        intrinsic_r = self.reachability_policy.act(batch, actions, rewards, masks)
-        rewards.add_(intrinsic_r)
+    def _add_intrinsic_reward(self, batch: dict, actions: torch.tensor,
+                              rewards: torch.tensor, masks: torch.tensor):
+        if self.r_enabled:
+            intrinsic_r = self.r_policy.act(batch, actions, rewards, masks)
+            rewards.add_(intrinsic_r)
 
         return rewards
 
@@ -135,6 +144,14 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         outputs = self.envs.step([a[0].item() for a in actions])
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
+
+        # img = cv2.resize(observations[0]["rgb"], (0, 0), fx=2., fy=2)
+        # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        # depth = observations[0]["depth"]
+        # depth = cv2.resize(depth, (0, 0), fx=2., fy=2)
+        # cv2.imshow("OBS", img)
+        # cv2.imshow("Depth", depth)
+        # cv2.waitKey(0)
 
         env_time += time.time() - t_step_env
 
@@ -194,7 +211,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             next_value, ppo_cfg.use_gae, ppo_cfg.gamma, ppo_cfg.tau
         )
 
-        if not self.skip_train_ppo_without_rtrain or self.reachability_policy.is_trained:
+        if not self.skip_train_ppo_without_rtrain or self.r_policy.is_trained:
             value_loss, action_loss, dist_entropy = self.agent.update(rollouts)
         else:
             value_loss, action_loss, dist_entropy = (0, 0, 0)
@@ -208,12 +225,24 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             dist_entropy,
         )
 
+    def add_new_based_on_cfg(self):
+        # Add proximity sensor if COLLISION_REWARD_ENABLED &
+        # COLLISION_DISTANCE > 0
+        if self.config.RL.COLLISION_REWARD_ENABLED and \
+            self.config.RL.COLLISION_DISTANCE > 0:
+            self.config.defrost()
+            self.config.TASK_CONFIG.TASK.SENSORS.append("PROXIMITY_SENSOR")
+            self.config.TASK_CONFIG.TASK.PROXIMITY_SENSOR\
+                .MAX_DETECTION_RADIUS = self.config.RL.COLLISION_DISTANCE + 0.5
+            self.config.freeze()
+
     def train(self) -> None:
         r"""Main method for training PPO.
 
         Returns:
             None
         """
+        self.add_new_based_on_cfg()
 
         self.envs = construct_envs(
             self.config, get_env_class(self.config.ENV_NAME)
@@ -400,6 +429,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         Returns:
             None
         """
+        self.add_new_based_on_cfg()
+
         # Map location CPU is almost always better than mapping to a CUDA device.
         ckpt_dict = self.load_checkpoint(checkpoint_path, map_location="cpu")
 
@@ -410,8 +441,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         ppo_cfg = config.RL.PPO
 
+        # # Mostly for visualization
         # config.defrost()
-        # config.TASK_CONFIG.DATASET.SPLIT = config.EVAL.SPLIT
+        # config.TASK_CONFIG.SIMULATOR.HABITAT_SIM_V0.GPU_GPU = False
         # config.freeze()
 
         if len(self.config.VIDEO_OPTION) > 0:
@@ -424,11 +456,12 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.envs = construct_envs(
             config, get_env_class(self.config.ENV_NAME)
         )
+
         self._setup_actor_critic_agent(ppo_cfg, train=False)
 
         self.agent.load_state_dict(ckpt_dict["state_dict"])
         self.actor_critic = self.agent.actor_critic
-        self.reachability_policy = self.agent.actor_critic.reachability_policy
+        self.r_policy = self.agent.actor_critic.reachability_policy
 
         # get name of performance metric, e.g. "spl"
         metric_name = self.config.TASK_CONFIG.TASK.MEASUREMENTS[0]
@@ -571,6 +604,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
                 # episode continues
                 elif len(self.config.VIDEO_OPTION) > 0:
+                    for k, v in observations[i].items():
+                        if isinstance(v, torch.Tensor):
+                            observations[i][k] = v.cpu().numpy()
                     frame = observations_to_image(observations[i], infos[i])
                     rgb_frames[i].append(frame)
 
