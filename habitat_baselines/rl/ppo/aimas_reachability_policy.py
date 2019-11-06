@@ -13,12 +13,18 @@ import cv2
 from habitat_baselines.common.utils import CategoricalNet, Flatten
 from habitat_baselines.rl.models.rnn_state_encoder import RNNStateEncoder
 from habitat_baselines.rl.models.simple_cnn import SimpleCNN
+from habitat_baselines.rl.models.simple_cnn_with_resnet import SimpleCNNResnet
 
 from habitat_baselines.rl.ppo.policy import Policy, Net
 from habitat.tasks.nav.nav_task_multi_goal import CLASSES
 
 from yolov3.models import Darknet
 from yolov3.utils import utils as yolo_utils
+
+VISUAL_ENCODER_MODELS = dict({
+    "SimpleCNN": SimpleCNN,
+    "SimpleCNNResnet": SimpleCNNResnet,
+})
 
 
 class ExploreNavBaselinePolicy(Policy):
@@ -30,7 +36,9 @@ class ExploreNavBaselinePolicy(Policy):
         with_target_encoding,
         device,
         hidden_size=512,
-        reachability_policy=None
+        reachability_policy=None,
+        visual_encoder=None,
+        drop_prob=0.5,
     ):
         super().__init__(
             ExploreNavBaselineNet(
@@ -38,7 +46,9 @@ class ExploreNavBaselinePolicy(Policy):
                 hidden_size=hidden_size,
                 goal_sensor_uuid=goal_sensor_uuid,
                 with_target_encoding=with_target_encoding,
-                device=device
+                device=device,
+                visual_encoder=visual_encoder,
+                drop_prob=drop_prob,
             ),
             action_space.n,
         )
@@ -52,7 +62,8 @@ class ExploreNavBaselineNet(Net):
     """
 
     def __init__(self, observation_space, hidden_size, goal_sensor_uuid,
-                 with_target_encoding, device):
+                 with_target_encoding, device, visual_encoder="SimpleCNN",
+                 drop_prob=0.5):
         super().__init__()
         self.goal_sensor_uuid = goal_sensor_uuid
         self.with_target_encoding = with_target_encoding
@@ -62,7 +73,8 @@ class ExploreNavBaselineNet(Net):
         ].shape[0]
         self._hidden_size = hidden_size
 
-        self.visual_encoder = SimpleCNN(observation_space, hidden_size)
+        self.visual_encoder = VISUAL_ENCODER_MODELS[visual_encoder](
+            observation_space, hidden_size, drop_prob=drop_prob)
 
         self.state_encoder = RNNStateEncoder(
             (0 if self.is_blind else self._hidden_size) +
