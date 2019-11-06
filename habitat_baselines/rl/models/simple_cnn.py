@@ -15,7 +15,7 @@ class SimpleCNN(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size):
+    def __init__(self, observation_space, output_size, drop_prob=0.5):
         super().__init__()
         if "rgb" in observation_space.spaces:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -32,6 +32,8 @@ class SimpleCNN(nn.Module):
 
         # strides for different CNN layers
         self._cnn_layers_stride = [(4, 4), (2, 2), (1, 1)]
+
+        self._drop_prob = drop_prob
 
         if self._n_input_rgb > 0:
             cnn_dims = np.array(
@@ -56,30 +58,34 @@ class SimpleCNN(nn.Module):
                     stride=np.array(stride, dtype=np.float32),
                 )
 
+            ds = 1
+
             self.cnn = nn.Sequential(
                 nn.Conv2d(
                     in_channels=self._n_input_rgb + self._n_input_depth,
-                    out_channels=32,
+                    out_channels=32 * ds,
                     kernel_size=self._cnn_layers_kernel_size[0],
                     stride=self._cnn_layers_stride[0],
                 ),
+                nn.Dropout2d(p=self._drop_prob),
                 nn.ReLU(True),
                 nn.Conv2d(
-                    in_channels=32,
-                    out_channels=64,
+                    in_channels=32 * ds,
+                    out_channels=64 * ds,
                     kernel_size=self._cnn_layers_kernel_size[1],
                     stride=self._cnn_layers_stride[1],
                 ),
+                nn.Dropout2d(p=self._drop_prob),
                 nn.ReLU(True),
                 nn.Conv2d(
-                    in_channels=64,
-                    out_channels=32,
+                    in_channels=64 * ds,
+                    out_channels=32 * ds,
                     kernel_size=self._cnn_layers_kernel_size[2],
                     stride=self._cnn_layers_stride[2],
                 ),
                 #  nn.ReLU(True),
                 Flatten(),
-                nn.Linear(32 * cnn_dims[0] * cnn_dims[1], output_size),
+                nn.Linear(32 * ds * cnn_dims[0] * cnn_dims[1], output_size),
                 nn.ReLU(True),
             )
 

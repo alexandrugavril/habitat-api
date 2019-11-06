@@ -17,9 +17,18 @@ LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
 COMMIT: "{commit_hash}"
 
+TASK_CONFIG:
+  TASK:
+    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
+
 RL:
   COLLISION_REWARD_ENABLED: False
+  COLLISION_DISTANCE: 0.0
+  COLLISION_REWARD: 0.0
+  SUCCESS_REWARD: 1.
   PPO:
+    visual_encoder: SimpleCNN
+    visual_encoder_dropout: 0.0
     # ppo params
     clip_param: 0.1 # Episodic curiosity has some kind of decaying cliprange
     ppo_epoch: 4
@@ -39,6 +48,7 @@ RL:
     reward_window_size: 50
 
   REACHABILITY:
+    enabled: False
     train: False
     skip_train_ppo_without_rtrain: False
     only_intrinsic_reward: False
