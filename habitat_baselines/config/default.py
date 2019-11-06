@@ -38,6 +38,7 @@ _C.LOG_INTERVAL = 10
 _C.LOG_FILE = "train.log"
 _C.CHECKPOINT_INTERVAL = 50
 _C.COMMIT = ""
+_C.EVAL_MODE = False
 
 # -----------------------------------------------------------------------------
 # EVAL CONFIG
@@ -53,7 +54,8 @@ _C.RL = CN()
 _C.RL.SUCCESS_REWARD = 10.0
 _C.RL.SLACK_REWARD = -0.01
 _C.RL.COLLISION_REWARD_ENABLED = False
-_C.RL.COLLISION_REWARD = -1
+_C.RL.COLLISION_DISTANCE = 0.
+_C.RL.COLLISION_REWARD = -1.
 
 # -----------------------------------------------------------------------------
 # DETECTOR
@@ -71,6 +73,8 @@ _C.DETECTOR.out_size = 32
 # PROXIMAL POLICY OPTIMIZATION (PPO)
 # -----------------------------------------------------------------------------
 _C.RL.PPO = CN()
+_C.RL.PPO.visual_encoder = "SimpleCNN"
+_C.RL.PPO.visual_encoder_dropout = 0.0
 _C.RL.PPO.clip_param = 0.1
 _C.RL.PPO.ppo_epoch = 4
 _C.RL.PPO.num_mini_batch = 4
@@ -91,6 +95,7 @@ _C.RL.PPO.reward_window_size = 50
 # REACHABILITY NETWORK CONFIG
 # -----------------------------------------------------------------------------
 _C.RL.REACHABILITY = CN()
+_C.RL.REACHABILITY.enabled = False
 _C.RL.REACHABILITY.train = False
 _C.RL.REACHABILITY.skip_train_ppo_without_rtrain = False
 _C.RL.REACHABILITY.only_intrinsic_reward = False
@@ -162,6 +167,9 @@ def get_config(
         0.5]`. Argument can be used for parameter sweeping or quick tests.
     """
     config = _C.clone()
+
+    task_config_opts = []
+
     if config_paths:
         if isinstance(config_paths, str):
             if CONFIG_FILE_SEPARATOR in config_paths:
@@ -170,9 +178,27 @@ def get_config(
                 config_paths = [config_paths]
 
         for config_path in config_paths:
-            config.merge_from_file(config_path)
+
+            # Read config and extract TASK_CONFIG args to add as opts
+            with open(config_path, "r") as f:
+                cfg = config.load_cfg(f)
+
+            cfg_clone = cfg.clone()
+            for k in list(cfg.keys()):
+                if not k.startswith("TASK_CONFIG"):
+                    cfg_clone.pop(k)
+                else:
+                    cfg.pop(k)
+
+            task_config_opts.append(cfg_clone)
+
+            config.merge_from_other_cfg(cfg)
 
     config.TASK_CONFIG = get_task_config(config.BASE_TASK_CONFIG_PATH)
+
+    for tsk_opts in task_config_opts:
+        config.merge_from_other_cfg(tsk_opts)
+
     if opts:
         config.CMD_TRAILING_OPTS = opts
         config.merge_from_list(opts)
