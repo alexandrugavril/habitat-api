@@ -141,7 +141,7 @@ def draw_collision(view: np.ndarray, alpha: float = 0.4) -> np.ndarray:
     """
     size = view.shape[0]
     strip_width = size // 20
-    mask = np.ones((size, size))
+    mask = np.ones((size, view.shape[1]))
     mask[strip_width:-strip_width, strip_width:-strip_width] = 0
     mask = mask == 1
     view[mask] = (alpha * np.array([255, 0, 0]) + (1.0 - alpha) * view)[mask]
