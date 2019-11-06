@@ -409,10 +409,11 @@ class ProximitySensor(Sensor):
     ):
         current_position = self._sim.get_agent_state().position
 
-        return self._sim.distance_to_closest_obstacle(
+        res = self._sim.distance_to_closest_obstacle(
             current_position, self._max_detection_radius
         )
-
+        res = [res]
+        return res
 
 @registry.register_measure
 class SPL(Measure):
@@ -811,6 +812,39 @@ class LookDownAction(SimulatorAction):
         ``step``.
         """
         return self._sim.step(SimulatorActions.LOOK_DOWN)
+
+
+@registry.register_task_action
+class NoisyMoveForwardAction(SimulatorAction):
+    name: str = "NOISY_MOVE_FORWARD"
+
+    def step(self, *args: Any, **kwargs: Any):
+        r"""Update ``_metric``, this method is called from ``Env`` on each
+        ``step``.
+        """
+        return self._sim.step(SimulatorActions.NOISY_MOVE_FORWARD)
+
+
+@registry.register_task_action
+class NoisyTurnLeftAction(SimulatorAction):
+    name: str = "NOISY_TURN_LEFT"
+
+    def step(self, *args: Any, **kwargs: Any):
+        r"""Update ``_metric``, this method is called from ``Env`` on each
+        ``step``.
+        """
+        return self._sim.step(SimulatorActions.NOISY_TURN_LEFT)
+
+
+@registry.register_task_action
+class NoisyTurnRightAction(SimulatorAction):
+    name: str = "NOISY_TURN_RIGHT"
+
+    def step(self, *args: Any, **kwargs: Any):
+        r"""Update ``_metric``, this method is called from ``Env`` on each
+        ``step``.
+        """
+        return self._sim.step(SimulatorActions.NOISY_TURN_RIGHT)
 
 
 @registry.register_task_action

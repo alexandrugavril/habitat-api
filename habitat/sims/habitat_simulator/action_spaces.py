@@ -10,6 +10,7 @@ from habitat.core.simulator import (
     SimulatorActions,
 )
 
+from habitat_sim.agent.controls.pyrobot_noisy_controls import pyrobot_noise_models
 
 @registry.register_action_space_configuration(name="v0")
 class HabitatSimV0ActionSpaceConfiguration(ActionSpaceConfiguration):
@@ -47,6 +48,49 @@ class HabitatSimV1ActionSpaceConfiguration(
             SimulatorActions.LOOK_DOWN: habitat_sim.ActionSpec(
                 "look_down",
                 habitat_sim.ActuationSpec(amount=self.config.TILT_ANGLE),
+            ),
+        }
+
+        config.update(new_config)
+
+        return config
+
+
+@registry.register_action_space_configuration(name="v2")
+class HabitatSimV2ActionSpaceConfiguration(
+    HabitatSimV1ActionSpaceConfiguration
+):
+    def get(self):
+        config = super().get()
+
+
+        new_config = {
+            SimulatorActions.NOISY_MOVE_FORWARD: habitat_sim.ActionSpec(
+                "pyrobot_noisy_move_forward",
+                habitat_sim.PyRobotNoisyActuationSpec(
+                    amount=self.config.FORWARD_STEP_SIZE,
+                    robot=self.config.ROBOT,
+                    controller=self.config.CONTROLLER,
+                    noise_multiplier=self.config.NOISE_MULTIPLIER,
+                ),
+            ),
+            SimulatorActions.NOISY_TURN_LEFT: habitat_sim.ActionSpec(
+                "pyrobot_noisy_turn_left",
+                habitat_sim.PyRobotNoisyActuationSpec(
+                    amount=self.config.TURN_ANGLE,
+                    robot=self.config.ROBOT,
+                    controller=self.config.CONTROLLER,
+                    noise_multiplier=self.config.NOISE_MULTIPLIER,
+                ),
+            ),
+            SimulatorActions.NOISY_TURN_RIGHT: habitat_sim.ActionSpec(
+                "pyrobot_noisy_turn_right",
+                habitat_sim.PyRobotNoisyActuationSpec(
+                    amount=self.config.TURN_ANGLE,
+                    robot=self.config.ROBOT,
+                    controller=self.config.CONTROLLER,
+                    noise_multiplier=self.config.NOISE_MULTIPLIER,
+                ),
             ),
         }
 

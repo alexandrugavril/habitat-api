@@ -67,6 +67,13 @@ ACTIONS.LOOK_DOWN.TYPE = "LookDownAction"
 ACTIONS.TELEPORT = CN()
 ACTIONS.TELEPORT.TYPE = "TeleportAction"
 
+ACTIONS.NOISY_MOVE_FORWARD = CN()
+ACTIONS.NOISY_MOVE_FORWARD.TYPE = "NoisyMoveForwardAction"
+ACTIONS.NOISY_TURN_LEFT = CN()
+ACTIONS.NOISY_TURN_LEFT.TYPE = "NoisyTurnLeftAction"
+ACTIONS.NOISY_TURN_RIGHT = CN()
+ACTIONS.NOISY_TURN_RIGHT.TYPE = "NoisyTurnRightAction"
+
 _C.TASK.ACTIONS = ACTIONS
 # -----------------------------------------------------------------------------
 # # TASK SENSORS
@@ -191,8 +198,11 @@ _C.TASK.COLLISIONS.TYPE = "Collisions"
 # -----------------------------------------------------------------------------
 _C.SIMULATOR = CN()
 _C.SIMULATOR.TYPE = "Sim-v0"
-_C.SIMULATOR.ACTION_SPACE_CONFIG = "v1"
+_C.SIMULATOR.ACTION_SPACE_CONFIG = "v0"
 _C.SIMULATOR.FORWARD_STEP_SIZE = 0.25  # in metres
+_C.SIMULATOR.ROBOT = "LoCoBot-Lite"  # in metres
+_C.SIMULATOR.CONTROLLER = "Movebase"  # in metres
+_C.SIMULATOR.NOISE_MULTIPLIER = 1.0  # in metres
 _C.SIMULATOR.SCENE = (
     "data/scene_datasets/habitat-test-scenes/" "van-gogh-room.glb"
 )
@@ -218,8 +228,8 @@ _C.SIMULATOR.RGB_SENSOR.TYPE = "HabitatSimRGBSensor"
 # -----------------------------------------------------------------------------
 _C.SIMULATOR.DEPTH_SENSOR = SENSOR.clone()
 _C.SIMULATOR.DEPTH_SENSOR.TYPE = "HabitatSimDepthSensor"
-_C.SIMULATOR.DEPTH_SENSOR.MIN_DEPTH = 0
-_C.SIMULATOR.DEPTH_SENSOR.MAX_DEPTH = 10
+_C.SIMULATOR.DEPTH_SENSOR.MIN_DEPTH = 0.
+_C.SIMULATOR.DEPTH_SENSOR.MAX_DEPTH = 10.
 _C.SIMULATOR.DEPTH_SENSOR.NORMALIZE_DEPTH = True
 # -----------------------------------------------------------------------------
 # SEMANTIC SENSOR
