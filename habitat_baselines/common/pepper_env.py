@@ -64,6 +64,7 @@ class PepperRLExplorationEnv(habitat.RLEnv):
 
         self._depth_buffer = []
         self._rgb_buffer = []
+        self._pose_buffer = []
         self._collected_positions = set()
 
         # Subscribe to RGB and Depth topics
@@ -79,11 +80,16 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         self._publisher_move = Topic(self._ros,
                                      self._pepper_config.MoveTopic,
                                      'geometry_msgs/PoseStamped')
+        self._listener_pose = Topic(self._ros,
+                                    self._pepper_config.PoseTopic,
+                                    'geometry_msgs/PoseStamped')
 
         self._listener_rgb.subscribe(lambda message:
                                      self._fetch_rgb(message))
         self._listener_depth.subscribe(lambda message:
                                        self._fetch_depth(message))
+        self._listener_pose.subscribe(lambda message:
+                                      self._fetch_pose(message))
 
         self.init_obs_space()
         self.init_action_space()
@@ -153,6 +159,12 @@ class PepperRLExplorationEnv(habitat.RLEnv):
     def close(self) -> None:
         self._ros.close()
 
+    def _fetch_pose(self, message):
+        self._pose_buffer.append(message)
+        if self._buffer_size != -1:
+            if len(self._pose_buffer) > self._buffer_size:
+                self._pose_buffer.pop(0)
+
     def _fetch_rgb(self, message):
         img = np.frombuffer(base64.b64decode(message['data']), np.uint8)
         img = img.reshape((message['height'], message['width'], 3))
@@ -167,7 +179,7 @@ class PepperRLExplorationEnv(habitat.RLEnv):
     def _fetch_depth(self, message):
         img = np.frombuffer(base64.b64decode(message['data']), np.uint16)
         img = img.reshape((message['height'], message['width'], 1))
-        img = (img.astype(np.float) / 9460.0).astype(np.float)
+        img = (img.astype(np.float) / img.max()).astype(np.float)
         img = cv2.resize(img, (self._image_width, self._image_height))
         img = img.reshape((self._image_height, self._image_width, 1))
         self._depth_buffer.append(img)
@@ -178,7 +190,7 @@ class PepperRLExplorationEnv(habitat.RLEnv):
 
     def _wait_move_done(self):
         import time
-        time.sleep(1.5)
+        time.sleep(2)
 
     def _send_command(self, action):
         action = action['action']
@@ -207,9 +219,11 @@ class PepperRLExplorationEnv(habitat.RLEnv):
             depth = self._depth_buffer[-1]
         else:
             depth = np.random.rand(self._image_height, self._image_width, 1)
-        cv2.imshow("RGB", rgb)
-        cv2.imshow("Depth", depth)
-        cv2.waitKey(1)
+        if self._pepper_config.DisplayImages:
+            cv2.imshow("RGB", rgb)
+            cv2.imshow("Depth", depth)
+            cv2.waitKey(1)
+
         return {
             "rgb": rgb,
             "depth": depth
@@ -243,10 +257,18 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         )
 
     def get_position(self):
-        return 0, 0, 0
+        if len(self._pose_buffer) == 0:
+            return (0, 0, 0), (0, 0, 0, 1)
+        else:
+            position = self._pose_buffer[-1]['pose']['position']
+            rotation = self._pose_buffer[-1]['pose']['orientation']
+
+            c_pos = position['x'], position['y'], position['z']
+            c_rot = rotation['x'], rotation['y'], rotation['z'], rotation['w']
+            return c_pos, c_rot
 
     def get_reward(self, observations):
-        x, y, z = self.get_position()
+        (x, y, z), (x, y, z, w) = self.get_position()
         reward = 0
         return reward
 
