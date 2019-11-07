@@ -69,6 +69,19 @@ _C.DETECTOR.img_size = 256
 _C.DETECTOR.nms_thres = 0.4
 _C.DETECTOR.out_size = 32
 
+
+# -----------------------------------------------------------------------------
+# PEPPER
+# -----------------------------------------------------------------------------
+_C.PEPPER = CN()
+_C.PEPPER.BufferSize = 10
+_C.PEPPER.ForwardStep = 0.1
+_C.PEPPER.TurnStep = 0.15
+_C.PEPPER.RGBTopic = "/pepper_robot/naoqi_driver/camera/front/image_raw"
+_C.PEPPER.DepthTopic = "/pepper_robot/naoqi_driver/camera/depth/image_raw"
+_C.PEPPER.MoveTopic = "/move_base_simple/goal"
+
+
 # -----------------------------------------------------------------------------
 # PROXIMAL POLICY OPTIMIZATION (PPO)
 # -----------------------------------------------------------------------------

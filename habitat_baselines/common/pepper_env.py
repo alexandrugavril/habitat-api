@@ -1,14 +1,18 @@
 
-from typing import Any, Dict, Optional, Type, Union
+from typing import Any, Dict, Optional, Type, List
 
 import habitat
 import roslibpy
+from argparse import Namespace
 from roslibpy import Message, Ros, Topic
+from gym import Space, spaces
 
 import numpy as np
 import base64
 import cv2
-from habitat import Config, Dataset
+from habitat import Config, Env
+from habitat.core.dataset import Dataset, Episode
+
 from habitat_baselines.common.baseline_registry import baseline_registry
 
 
@@ -27,8 +31,8 @@ def _get_movement_ros_message(fw_step, r_step):
             'orientation': {
                 'x': 0,
                 'y': 0,
-                'z': 0,
-                'w': r_step
+                'z': r_step,
+                'w': 0
             }
         }
     })
@@ -39,10 +43,20 @@ def _get_movement_ros_message(fw_step, r_step):
 class PepperRLExplorationEnv(habitat.RLEnv):
     def __init__(self, config: Config, dataset: Optional[Dataset] = None):
         # Initialize ROS Bridge
-        self._pepper_config = config.Pepper
+        self._pepper_config = config.PEPPER
         self._ros = roslibpy.Ros(host='localhost', port=9090)
         self._ros.run()
         assert self._ros.is_connected, "ROS not connected"
+
+        sim_config = config.TASK_CONFIG.SIMULATOR
+
+        self._image_width = sim_config.RGB_SENSOR.WIDTH
+        self._image_height = sim_config.RGB_SENSOR.HEIGHT
+        self._norm_depth = sim_config.DEPTH_SENSOR.NORMALIZE_DEPTH
+
+        self.goal_sensor_uuid = config.TASK_CONFIG.TASK.GOAL_SENSOR_UUID
+        self._goal_sensor_dim = config.TASK_CONFIG.TASK.\
+            POINTGOAL_WITH_GPS_COMPASS_SENSOR.DIMENSIONALITY
 
         self._buffer_size = self._pepper_config.BufferSize
         self._forward_step = self._pepper_config.ForwardStep
@@ -71,12 +85,73 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         self._listener_depth.subscribe(lambda message:
                                        self.fetch_depth(message))
 
-        self._core_env_config = config.TASK_CONFIG
+        self.init_obs_space()
+        self.init_action_space()
 
-        self._previous_action = None
-        self._grid_resolution = self._rl_config.REACHABILITY.grid_resolution
+        #super().__init__(self._core_env_config, dataset)
 
-        super().__init__(self._core_env_config, dataset)
+    def init_action_space(self):
+        self.action_space = spaces.Discrete(3)
+
+
+    def init_obs_space(self):
+        self.observation_space = Namespace()
+        rgb_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(self._image_height, self._image_width, 3),
+            dtype=np.uint8,
+        )
+        if self._norm_depth:
+            min_depth = 0
+            max_depth = 1
+        else:
+            min_depth = 0
+            max_depth = 255
+
+        depth_space = spaces.Box(
+            low=min_depth,
+            high=max_depth,
+            shape=(self._image_height, self._image_width, 1),
+            dtype=np.float,
+        )
+
+        pointgoal_with_gps_compass_space = spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=(self._goal_sensor_dim,),
+            dtype=np.float32,
+        )
+
+        self.observation_space.spaces = {
+            "rgb": rgb_space,
+            "depth": depth_space,
+            self.goal_sensor_uuid: pointgoal_with_gps_compass_space
+        }
+
+    @property
+    def habitat_env(self) -> Env:
+        return None
+
+    @property
+    def episodes(self) -> List[Type[Episode]]:
+        return []
+
+    @property
+    def current_episode(self) -> Type[Episode]:
+        ep = Namespace()
+        ep.episode_id = 0
+        ep.scene_id = 0
+        return ep
+
+    def seed(self, seed: Optional[int] = None) -> None:
+        pass
+
+    def render(self, mode: str = "rgb") -> np.ndarray:
+        pass
+
+    def close(self) -> None:
+        self._ros.close()
 
     def _fetch_rgb(self, message):
         img = np.frombuffer(base64.b64decode(message['data']), np.uint8)
@@ -98,21 +173,42 @@ class PepperRLExplorationEnv(habitat.RLEnv):
                 self._depth_buffer.pop(0)
 
     def _wait_move_done(self):
-        pass
+        import time
+        time.sleep(2)
 
     def _send_command(self, action):
-        print("Action:", action)
-        if action == "MOVE_FORWARD":
+        action = action['action']
+
+        if action == 0:
+            print("Action:", "Forward")
             m = _get_movement_ros_message(self._forward_step, 0)
             self._publisher_move.publish(m)
-        elif action == 'TURN_LEFT':
+        elif action == 1:
+            print("Action:", "Left")
             m = _get_movement_ros_message(0, self._turn_step)
             self._publisher_move.publish(m)
-        elif action == 'TURN_RIGHT':
+        elif action == 2:
+            print("Action:", "Right")
             m = _get_movement_ros_message(0, -1 * self._turn_step)
             self._publisher_move.publish(m)
 
         self._wait_move_done()
+
+    def get_obs(self):
+        if len(self._rgb_buffer) > 0:
+            rgb = self._rgb_buffer[-1]
+        else:
+            rgb = np.random.rand(self._image_height, self._image_width, 3)
+
+        if len(self._depth_buffer) > 0:
+            depth = self._depth_buffer[-1]
+        else:
+            depth = np.random.rand(self._image_height, self._image_width, 1)
+
+        return {
+            "rgb": rgb,
+            "depth": depth
+        }
 
     def reset(self):
         self._previous_action = None
@@ -128,11 +224,7 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         self._previous_action = kwargs["action"]
         self._send_command(self._previous_action)
 
-        observations = {
-            'rgb': self._rgb_buffer[-1],
-            'depth': self._depth_buffer[-1]
-        }
-
+        observations = self.get_obs()
         reward = self.get_reward(observations)
         done = self.get_done(observations)
         info = self.get_info(observations)
@@ -145,20 +237,12 @@ class PepperRLExplorationEnv(habitat.RLEnv):
             1,
         )
 
+    def get_position(self):
+        return 0, 0, 0
+
     def get_reward(self, observations):
         x, y, z = self.get_position()
-
         reward = 0
-
-        quantized_x = int(x / self._grid_resolution)
-        quantized_y = int(y / self._grid_resolution)
-        quantized_z = int(z / self._grid_resolution)
-        position_id = (quantized_x, quantized_y, quantized_z)
-
-        if position_id not in self._collected_positions:
-            reward += 1
-            self._collected_positions.add(position_id)
-
         return reward
 
     def _episode_success(self):
@@ -171,4 +255,16 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         return done
 
     def get_info(self, observations):
-        return {}
+        map = np.random.rand(32, 32, 3)
+        info = {
+            "top_down_map": {
+                "map": np.array([[0, 0, 0]]),
+                "valid_map": map,
+                "explored_map": map,
+                "ful_fog_of_war_mask": map,
+                "fog_of_war_mask": None,
+                "agent_map_coord": np.array([0, 0, 0]),
+                "agent_angle": 0
+            }
+        }
+        return info

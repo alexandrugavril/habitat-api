@@ -1,2 +1,3 @@
 from habitat_baselines.common import environments_object
 from habitat_baselines.common import environments_exploration
+from habitat_baselines.common import pepper_env
