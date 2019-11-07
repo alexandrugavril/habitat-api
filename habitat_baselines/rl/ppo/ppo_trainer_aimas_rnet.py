@@ -463,6 +463,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.actor_critic = self.agent.actor_critic
         self.r_policy = self.agent.actor_critic.reachability_policy
 
+        if config.EVAL_MODE:
+            self.agent.eval()
+            self.r_policy.eval()
+
         # get name of performance metric, e.g. "spl"
         metric_name = self.config.TASK_CONFIG.TASK.MEASUREMENTS[0]
         metric_cfg = getattr(self.config.TASK_CONFIG.TASK, metric_name)
