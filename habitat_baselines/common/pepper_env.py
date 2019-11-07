@@ -32,7 +32,7 @@ def _get_movement_ros_message(fw_step, r_step):
                 'x': 0,
                 'y': 0,
                 'z': r_step,
-                'w': 0
+                'w': 1
             }
         }
     })
@@ -83,7 +83,7 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         self._listener_rgb.subscribe(lambda message:
                                      self._fetch_rgb(message))
         self._listener_depth.subscribe(lambda message:
-                                       self.fetch_depth(message))
+                                       self._fetch_depth(message))
 
         self.init_obs_space()
         self.init_action_space()
@@ -157,6 +157,7 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         img = np.frombuffer(base64.b64decode(message['data']), np.uint8)
         img = img.reshape((message['height'], message['width'], 3))
         img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        img = cv2.resize(img, (self._image_width, self._image_height))
         self._rgb_buffer.append(img)
 
         if self._buffer_size != -1:
@@ -166,6 +167,9 @@ class PepperRLExplorationEnv(habitat.RLEnv):
     def _fetch_depth(self, message):
         img = np.frombuffer(base64.b64decode(message['data']), np.uint16)
         img = img.reshape((message['height'], message['width'], 1))
+        img = (img.astype(np.float) / 9460.0).astype(np.float)
+        img = cv2.resize(img, (self._image_width, self._image_height))
+        img = img.reshape((self._image_height, self._image_width, 1))
         self._depth_buffer.append(img)
 
         if self._buffer_size != -1:
@@ -174,24 +178,23 @@ class PepperRLExplorationEnv(habitat.RLEnv):
 
     def _wait_move_done(self):
         import time
-        time.sleep(2)
+        time.sleep(1.5)
 
     def _send_command(self, action):
         action = action['action']
 
         if action == 0:
-            print("Action:", "Forward")
+            print("Action:", "Forward", self._forward_step, self._turn_step)
             m = _get_movement_ros_message(self._forward_step, 0)
             self._publisher_move.publish(m)
         elif action == 1:
-            print("Action:", "Left")
+            print("Action:", "Left", 0, self._turn_step)
             m = _get_movement_ros_message(0, self._turn_step)
             self._publisher_move.publish(m)
         elif action == 2:
-            print("Action:", "Right")
+            print("Action:", "Right", 0, self._turn_step)
             m = _get_movement_ros_message(0, -1 * self._turn_step)
             self._publisher_move.publish(m)
-
         self._wait_move_done()
 
     def get_obs(self):
@@ -204,7 +207,9 @@ class PepperRLExplorationEnv(habitat.RLEnv):
             depth = self._depth_buffer[-1]
         else:
             depth = np.random.rand(self._image_height, self._image_width, 1)
-
+        cv2.imshow("RGB", rgb)
+        cv2.imshow("Depth", depth)
+        cv2.waitKey(1)
         return {
             "rgb": rgb,
             "depth": depth
