@@ -18,6 +18,7 @@ from habitat.core.simulator import Observations, Simulator
 from habitat.datasets import make_dataset
 from habitat.sims import make_sim
 from habitat.tasks import make_task
+from habitat.core.simulator import ShortestPathPoint, SimulatorActions
 
 
 class Env:
@@ -32,6 +33,9 @@ class Env:
     classes. `Env` consists of three major components: ``dataset`` (`episodes`), ``simulator`` (`sim`) and `task` and connects all the three components
     together.
     """
+    SimulatorActions.extend_action_space("NOISY_MOVE_FORWARD")
+    SimulatorActions.extend_action_space("NOISY_TURN_LEFT")
+    SimulatorActions.extend_action_space("NOISY_TURN_RIGHT")
 
     observation_space: SpaceDict
     action_space: SpaceDict

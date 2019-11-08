@@ -28,6 +28,9 @@ class NavObjectRLEnv(NavRLEnv):
 
         self._success_if_in_view = task_cfg.SUCCESS_IF_IN_VIEW
         self._view_field = task_cfg.VIEW_FIELD_FACTOR
+        self._with_collision_reward = self._rl_config.COLLISION_REWARD_ENABLED
+        self._collision_reward = self._rl_config.COLLISION_REWARD
+        self._collision_distance = self._rl_config.COLLISION_DISTANCE
 
     def reset(self):
         self._previous_action = None
@@ -39,6 +42,20 @@ class NavObjectRLEnv(NavRLEnv):
 
         return observations
 
+    def step(self, *args, **kwargs):
+        self._previous_action = kwargs["action"]
+        observation, reward, done, info = super().step(*args, **kwargs)
+
+        if self._with_collision_reward:
+            if self._collision_distance <= 0:
+                if info["collisions"]["is_collision"]:
+                    reward += self._collision_reward
+            else:
+                if observation["proximity"][0] < self._collision_distance:
+                    reward += self._collision_reward
+
+        return observation, reward, done, info
+        
     def _distance_target(self):
         goal_idx = self._env.current_episode.goal_idx
 
@@ -50,6 +67,7 @@ class NavObjectRLEnv(NavRLEnv):
         return distance
 
     def _episode_success(self):
+        return False
         ep = self._env.current_episode
         goal_idx = ep.goal_idx
         success_distance = self._success_distance + ep.goals[goal_idx].radius
