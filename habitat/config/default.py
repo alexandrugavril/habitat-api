@@ -200,8 +200,8 @@ _C.SIMULATOR = CN()
 _C.SIMULATOR.TYPE = "Sim-v0"
 _C.SIMULATOR.ACTION_SPACE_CONFIG = "v0"
 _C.SIMULATOR.FORWARD_STEP_SIZE = 0.25  # in metres
-_C.SIMULATOR.ROBOT = "LoCoBot-Lite"  # in metres
-_C.SIMULATOR.CONTROLLER = "Movebase"  # in metres
+_C.SIMULATOR.ROBOT = "LoCoBot"  # in metres
+_C.SIMULATOR.CONTROLLER = "ILQR"  # in metres
 _C.SIMULATOR.NOISE_MULTIPLIER = 1.0  # in metres
 _C.SIMULATOR.SCENE = (
     "data/scene_datasets/habitat-test-scenes/" "van-gogh-room.glb"
