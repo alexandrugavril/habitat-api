@@ -1,6 +1,6 @@
 BASE_TASK_CONFIG_PATH: "configs/tasks/explore_replica.yaml"
 TRAINER_NAME: "ppoAimasReachability"
-ENV_NAME: "NavRLExploration"
+ENV_NAME: "NavObjectRLEnv"
 SIMULATOR_GPU_ID: {gpu_id}
 TORCH_GPU_ID: {gpu_id}
 VIDEO_OPTION: ["disk", "tensorboard"]
@@ -9,8 +9,8 @@ VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
 EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
 CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
 LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
-TEST_EPISODE_COUNT: 2
-NUM_PROCESSES: 2  # Lets move to 12 number of envs
+TEST_EPISODE_COUNT: 12
+NUM_PROCESSES: 1  # Lets move to 12 number of envs
 SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"]
 NUM_UPDATES: 5000 # So as to train on 15 Mil frames
 LOG_INTERVAL: 10
@@ -28,10 +28,11 @@ TRANSFORM_DEPTH:
   std_noise: 0.2
   depth_min_th: 0.04
   depth_max_th: 0.8
-  noise_interval: 0.03
+  noise_interval: 0.04
 
 TASK_CONFIG:
   TASK:
+    SUCCESS_IF_IN_VIEW: False
     SENSORS: ["SET_GOAL", 'POINTGOAL_WITH_GPS_COMPASS_SENSOR']
     WITH_TARGET_ENCODING: True
     POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
@@ -41,13 +42,13 @@ TASK_CONFIG:
 RL:
   SLACK_REWARD: -0.01
   COLLISION_REWARD_ENABLED: True
-  SUCCESS_REWARD: 1.
+  SUCCESS_REWARD: 10.
   COLLISION_REWARD: -0.1
   COLLISION_DISTANCE: 0.3
   PPO:
     visual_encoder: SimpleCNN
     visual_encoder_dropout: 0.0
-    channel_scale: 1
+    channel_scale: 2
     # ppo params
     clip_param: 0.1 # Episodic curiosity has some kind of decaying cliprange
     ppo_epoch: 4

@@ -15,6 +15,7 @@ from typing import Any, Dict, Optional, Type, Union
 import habitat
 from habitat import Config, Dataset, SimulatorActions
 from habitat_baselines.common.baseline_registry import baseline_registry
+from habitat_baselines.common.augmentation_env import AugmentEnv
 
 
 def get_env_class(env_name: str) -> Type[habitat.RLEnv]:
@@ -30,8 +31,10 @@ def get_env_class(env_name: str) -> Type[habitat.RLEnv]:
 
 
 @baseline_registry.register_env(name="NavRLEnv")
-class NavRLEnv(habitat.RLEnv):
+class NavRLEnv(AugmentEnv):
     def __init__(self, config: Config, dataset: Optional[Dataset] = None):
+        super().__init__(config, dataset)
+
         self._rl_config = config.RL
         self._core_env_config = config.TASK_CONFIG
 
@@ -39,7 +42,6 @@ class NavRLEnv(habitat.RLEnv):
         self._previous_action = None
         self._episode_distance_covered = None
         self._success_distance = self._core_env_config.TASK.SUCCESS_DISTANCE
-        super().__init__(self._core_env_config, dataset)
 
     def reset(self):
         self._previous_action = None

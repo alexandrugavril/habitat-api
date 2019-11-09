@@ -41,6 +41,24 @@ _C.COMMIT = ""
 _C.EVAL_MODE = False
 
 # -----------------------------------------------------------------------------
+# IMAGE TRANSFORM
+# -----------------------------------------------------------------------------
+_C.TRANSFORM = CN()
+_C.TRANSFORM.ENABLED = False
+_C.TRANSFORM.min_scale = 1.
+_C.TRANSFORM.max_scale = 1.2
+
+_C.TRANSFORM_RGB = CN()
+_C.TRANSFORM_RGB.ENABLED = False
+
+_C.TRANSFORM_DEPTH = CN()
+_C.TRANSFORM_DEPTH.ENABLED = False
+_C.TRANSFORM_DEPTH.std_noise = 0.2
+_C.TRANSFORM_DEPTH.depth_min_th = 0.04
+_C.TRANSFORM_DEPTH.depth_max_th = 0.8
+_C.TRANSFORM_DEPTH.noise_interval = 0.03
+
+# -----------------------------------------------------------------------------
 # EVAL CONFIG
 # -----------------------------------------------------------------------------
 _C.EVAL = CN()
@@ -91,6 +109,7 @@ _C.PEPPER.EpisodePath = "./pepper_save.p"
 _C.RL.PPO = CN()
 _C.RL.PPO.visual_encoder = "SimpleCNN"
 _C.RL.PPO.visual_encoder_dropout = 0.0
+_C.RL.PPO.channel_scale = 1
 _C.RL.PPO.clip_param = 0.1
 _C.RL.PPO.ppo_epoch = 4
 _C.RL.PPO.num_mini_batch = 4
