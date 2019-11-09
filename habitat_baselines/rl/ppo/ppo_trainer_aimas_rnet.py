@@ -88,6 +88,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             reachability_policy=self.r_policy,
             visual_encoder=ppo_cfg.visual_encoder,
             drop_prob=ppo_cfg.visual_encoder_dropout,
+            channel_scale=ppo_cfg.channel_scale,
         )
         self.actor_critic.to(self.device)
 
@@ -145,9 +146,12 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         outputs = self.envs.step([a[0].item() for a in actions])
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 
-        # img = cv2.resize(observations[0]["rgb"], (0, 0), fx=2., fy=2)
+        # rgb = observations[0]["rgb"].cpu().numpy()
+        # depth = observations[0]["depth"].cpu().numpy()
+        #
+        # img = cv2.resize(rgb, (0, 0), fx=2., fy=2)
+        # # img = img.astype(np.uint8)
         # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        # depth = observations[0]["depth"]
         # depth = cv2.resize(depth, (0, 0), fx=2., fy=2)
         # cv2.imshow("OBS", img)
         # cv2.imshow("Depth", depth)

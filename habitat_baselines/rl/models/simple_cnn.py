@@ -15,7 +15,8 @@ class SimpleCNN(nn.Module):
         output_size: The size of the embedding vector
     """
 
-    def __init__(self, observation_space, output_size, drop_prob=0.5):
+    def __init__(self, observation_space, output_size, drop_prob=0.5,
+                 channel_scale=1):
         super().__init__()
         if "rgb" in observation_space.spaces:
             self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
@@ -58,7 +59,7 @@ class SimpleCNN(nn.Module):
                     stride=np.array(stride, dtype=np.float32),
                 )
 
-            ds = 1
+            ds = channel_scale
 
             self.cnn = nn.Sequential(
                 nn.Conv2d(

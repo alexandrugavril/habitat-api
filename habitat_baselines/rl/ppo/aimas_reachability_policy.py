@@ -39,6 +39,7 @@ class ExploreNavBaselinePolicy(Policy):
         reachability_policy=None,
         visual_encoder=None,
         drop_prob=0.5,
+        channel_scale=1,
     ):
         super().__init__(
             ExploreNavBaselineNet(
@@ -49,6 +50,7 @@ class ExploreNavBaselinePolicy(Policy):
                 device=device,
                 visual_encoder=visual_encoder,
                 drop_prob=drop_prob,
+                channel_scale=channel_scale,
             ),
             action_space.n,
         )
@@ -63,7 +65,7 @@ class ExploreNavBaselineNet(Net):
 
     def __init__(self, observation_space, hidden_size, goal_sensor_uuid,
                  with_target_encoding, device, visual_encoder="SimpleCNN",
-                 drop_prob=0.5):
+                 drop_prob=0.5, channel_scale=1):
         super().__init__()
         self.goal_sensor_uuid = goal_sensor_uuid
         self.with_target_encoding = with_target_encoding
@@ -74,7 +76,8 @@ class ExploreNavBaselineNet(Net):
         self._hidden_size = hidden_size
 
         self.visual_encoder = VISUAL_ENCODER_MODELS[visual_encoder](
-            observation_space, hidden_size, drop_prob=drop_prob)
+            observation_space, hidden_size, drop_prob=drop_prob,
+            channel_scale=channel_scale)
 
         self.state_encoder = RNNStateEncoder(
             (0 if self.is_blind else self._hidden_size) +
