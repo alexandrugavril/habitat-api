@@ -626,11 +626,13 @@ class TopDownMap(Measure):
             self._coordinate_max,
             self._map_resolution,
         )
+        goal_idx = getattr(episode, "goal_idx", 0)
+
         self._previous_xy_location = (a_y, a_x)
         if self._config.DRAW_SHORTEST_PATH:
             # draw shortest path
             self._shortest_path_points = self._sim.get_straight_shortest_path_points(
-                agent_position, episode.goals[0].position
+                agent_position, episode.goals[goal_idx].position
             )
             self._shortest_path_points = [
                 maps.to_grid(
