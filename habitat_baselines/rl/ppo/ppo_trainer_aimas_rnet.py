@@ -235,9 +235,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         if self.config.RL.COLLISION_REWARD_ENABLED and \
             self.config.RL.COLLISION_DISTANCE > 0:
             self.config.defrost()
-            self.config.TASK_CONFIG.TASK.SENSORS.append("PROXIMITY_SENSOR")
-            self.config.TASK_CONFIG.TASK.PROXIMITY_SENSOR\
-                .MAX_DETECTION_RADIUS = self.config.RL.COLLISION_DISTANCE + 0.5
+            if "PROXIMITY_SENSOR" not in self.config.TASK_CONFIG.TASK.SENSORS:
+                self.config.TASK_CONFIG.TASK.SENSORS.append("PROXIMITY_SENSOR")
+                self.config.TASK_CONFIG.TASK.PROXIMITY_SENSOR\
+                    .MAX_DETECTION_RADIUS = \
+                    self.config.RL.COLLISION_DISTANCE + 0.5
             self.config.freeze()
 
     def train(self) -> None:
@@ -450,6 +452,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         # config.TASK_CONFIG.SIMULATOR.HABITAT_SIM_V0.GPU_GPU = False
         # config.freeze()
 
+        split = config.TASK_CONFIG.DATASET.SPLIT
+
         if len(self.config.VIDEO_OPTION) > 0:
             config.defrost()
             config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
@@ -505,6 +509,14 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             self.config.NUM_PROCESSES, 1, device=self.device
         )
         stats_episodes = dict()  # dict of dicts that stores stats per episode
+        stats_episodes_scenes = dict()  # dict of number of collected stats from
+        # each scene
+        max_test_ep_count = self.config.TEST_EPISODE_COUNT
+
+        # TODO this should depend on number of scenes :(
+        # TODO But than envs shouldn't be paused but fast-fwd to next scene
+        # TODO We consider num envs == num scenes
+        max_ep_per_env = max_test_ep_count / float(self.envs.num_envs)
 
         rgb_frames = [
             [] for _ in range(self.config.NUM_PROCESSES)
@@ -512,8 +524,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         if len(self.config.VIDEO_OPTION) > 0:
             os.makedirs(self.config.VIDEO_DIR, exist_ok=True)
 
+        video_log_int = self.config.VIDEO_OPTION_INTERVAL
+
         while (
-            len(stats_episodes) < self.config.TEST_EPISODE_COUNT
+            len(stats_episodes) <= self.config.TEST_EPISODE_COUNT
             and self.envs.num_envs > 0
         ):
             current_episodes = self.envs.current_episodes()
@@ -564,13 +578,17 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
             current_episode_reward += rewards
             next_episodes = self.envs.current_episodes()
+
             envs_to_pause = []
             n_envs = self.envs.num_envs
+
             for i in range(n_envs):
-                if (
-                    next_episodes[i].scene_id,
-                    next_episodes[i].episode_id,
-                ) in stats_episodes:
+                scene = next_episodes[i].scene_id
+
+                if scene not in stats_episodes_scenes:
+                    stats_episodes_scenes[scene] = 0
+
+                if stats_episodes_scenes[scene] >= max_ep_per_env:
                     envs_to_pause.append(i)
 
                 # episode ended
@@ -596,7 +614,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                         )
                     ] = episode_stats
 
-                    if len(self.config.VIDEO_OPTION) > 0:
+                    stats_episodes_scenes[current_episodes[i].scene_id] += 1
+
+                    if len(self.config.VIDEO_OPTION) > 0 and \
+                        checkpoint_index % video_log_int == 0:
                         generate_video(
                             video_option=self.config.VIDEO_OPTION,
                             video_dir=self.config.VIDEO_DIR,
@@ -618,24 +639,32 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     frame = observations_to_image(observations[i], infos[i])
                     rgb_frames[i].append(frame)
 
-        (
-            self.envs,
-            test_recurrent_hidden_states,
-            not_done_masks,
-            current_episode_reward,
-            prev_actions,
-            batch,
-            rgb_frames,
-        ) = self._pause_envs(
-            envs_to_pause,
-            self.envs,
-            test_recurrent_hidden_states,
-            not_done_masks,
-            current_episode_reward,
-            prev_actions,
-            batch,
-            rgb_frames,
-        )
+            # Pop done envs:
+            if len(envs_to_pause) > 0:
+                s_index = list(range(self.envs.num_envs))
+                for idx in reversed(envs_to_pause):
+                    s_index.pop(idx)
+
+                current_episode_go_reward = current_episode_go_reward[s_index]
+
+            (
+                self.envs,
+                test_recurrent_hidden_states,
+                not_done_masks,
+                current_episode_reward,
+                prev_actions,
+                batch,
+                rgb_frames,
+            ) = self._pause_envs(
+                envs_to_pause,
+                self.envs,
+                test_recurrent_hidden_states,
+                not_done_masks,
+                current_episode_reward,
+                prev_actions,
+                batch,
+                rgb_frames,
+            )
 
         aggregated_stats = dict()
         for stat_key in next(iter(stats_episodes.values())).keys():
@@ -662,27 +691,29 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         writer.add_scalars(
             "eval_reward",
-            {"average reward": episode_reward_mean, "average go reward": episode_go_reward_mean},
+            {
+                f"{split}_average reward": episode_reward_mean,
+                f"{split}_average go reward": episode_go_reward_mean},
             checkpoint_index,
         )
         writer.add_scalars(
             f"eval_map_discovered",
-            {f"average map discovered": episode_map_discovered},
+            {f"{split}_average map discovered": episode_map_discovered},
             checkpoint_index,
         )
         writer.add_scalars(
             f"eval_map_seen",
-            {f"average map seen": episode_map_seen},
+            {f"{split}_average map seen": episode_map_seen},
             checkpoint_index,
         )
         writer.add_scalars(
             f"eval_{self.metric_uuid}",
-            {f"average {self.metric_uuid}": episode_metric_mean},
+            {f"{split}_average {self.metric_uuid}": episode_metric_mean},
             checkpoint_index,
         )
         writer.add_scalars(
             "eval_success",
-            {"average success": episode_success_mean},
+            {f"{split}_average success": episode_success_mean},
             checkpoint_index,
         )
         print(f"[{checkpoint_index}] average reward", episode_reward_mean)
