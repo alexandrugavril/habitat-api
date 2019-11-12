@@ -4,6 +4,7 @@ ENV_NAME: "NavObjectRLEnv"
 SIMULATOR_GPU_ID: {gpu_id}
 TORCH_GPU_ID: {gpu_id}
 VIDEO_OPTION: ["disk", "tensorboard"]
+VIDEO_OPTION_INTERVAL: 10
 TENSORBOARD_DIR: "results/{results_prefix}/explore_GO_test/tb"
 VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
 EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
