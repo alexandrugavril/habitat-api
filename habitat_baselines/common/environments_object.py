@@ -53,22 +53,15 @@ class NavObjectRLEnv(NavRLEnv):
         dist_to_goal = 0
         min_dist = self._min_start_dist_to_goal
         th_dist = self._success_distance
-        observations = super().reset()
 
         while dist_to_goal < min_dist:
             observations = super().reset()
             ep = self._env.current_episode
 
-            print(ep)
-            input()
-            continue
-
             success_distance = th_dist + ep.goals[ep.goal_idx].radius
             dist_to_goal = self._distance_target() - success_distance
 
         goal_idx = self._env.current_episode.goal_idx
-        # print(self._env.current_episode.scene_id,
-        #       self._env.current_episode.episode_id)
 
         self._previous_target_distance = \
             self.habitat_env.current_episode.geodesic_distances[goal_idx]
@@ -79,22 +72,18 @@ class NavObjectRLEnv(NavRLEnv):
         self._previous_action = kwargs["action"]
         observation, reward, done, info = super().step(*args, **kwargs)
 
-        if self._with_collision_reward:
-            if self._collision_distance <= 0:
-                if info["collisions"]["is_collision"]:
-                    reward += self._collision_reward
-            else:
-                if observation["proximity"][0] < self._collision_distance:
-                    reward += self._collision_reward
+        if not np.isfinite(reward):
+            done = True
+            reward = self._rl_config.SLACK_REWARD
+        else:
+            if self._with_collision_reward:
+                if self._collision_distance <= 0:
+                    if info["collisions"]["is_collision"]:
+                        reward += self._collision_reward
+                else:
+                    if observation["proximity"][0] < self._collision_distance:
+                        reward += self._collision_reward
 
-        # print(self._env.current_episode.scene_id,
-        #       self._env.current_episode.episode_id, "NUMSTEP:",
-        #       self._num_steps)
-        # ep = self._env.current_episode
-        # goal_idx = ep.goal_idx
-
-        # print("STEP INFO:", self._env.current_episode.goal_idx,
-        #       self._distance_target(), reward, done, ep.goals[goal_idx].radius)
         return observation, reward, done, info
         
     def _distance_target(self):
@@ -112,10 +101,12 @@ class NavObjectRLEnv(NavRLEnv):
         ep = self._env.current_episode
         goal_idx = ep.goal_idx
         success_distance = self._success_distance + ep.goals[goal_idx].radius
+        target_distance = self._distance_target()
+
         if (
             # self._env.task.is_stop_called
             # and
-            self._distance_target() < success_distance
+            target_distance < success_distance
         ):
             if self._success_if_in_view:
                 goal_stats = ep.goal_coord_in_camera

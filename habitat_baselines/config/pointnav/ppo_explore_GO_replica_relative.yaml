@@ -4,13 +4,14 @@ ENV_NAME: "NavObjectRLEnv"
 SIMULATOR_GPU_ID: {gpu_id}
 TORCH_GPU_ID: {gpu_id}
 VIDEO_OPTION: ["disk", "tensorboard"]
+VIDEO_OPTION_INTERVAL: 10
 TENSORBOARD_DIR: "results/{results_prefix}/explore_GO_test/tb"
 VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
 EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
 CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
 LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
 TEST_EPISODE_COUNT: 12
-NUM_PROCESSES: 1  # Lets move to 12 number of envs
+NUM_PROCESSES: 12  # Lets move to 12 number of envs
 SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"]
 NUM_UPDATES: 5000 # So as to train on 15 Mil frames
 LOG_INTERVAL: 10
@@ -33,12 +34,21 @@ TRANSFORM_DEPTH:
 TASK_CONFIG:
   TASK:
     SUCCESS_IF_IN_VIEW: False
-    SENSORS: ["SET_GOAL", 'POINTGOAL_WITH_GPS_COMPASS_SENSOR']
+    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR']
     WITH_TARGET_ENCODING: True
-    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
+#    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
   SIMULATOR:
     HABITAT_SIM_V0:
       GPU_DEVICE_ID: {gpu_id}
+
+  ENVIRONMENT:
+    ITERATOR_OPTIONS:
+      GROUP_BY_SCENE: False
+      SHUFFLE: True
+    OVERRIDE_RAND_GOAL:
+      ENABLED: True
+      MIN_DIST: 1.
+      RADIUS: 0.2
 RL:
   SLACK_REWARD: -0.01
   COLLISION_REWARD_ENABLED: True
@@ -48,7 +58,7 @@ RL:
   PPO:
     visual_encoder: SimpleCNN
     visual_encoder_dropout: 0.0
-    channel_scale: 2
+    channel_scale: 1
     # ppo params
     clip_param: 0.1 # Episodic curiosity has some kind of decaying cliprange
     ppo_epoch: 4

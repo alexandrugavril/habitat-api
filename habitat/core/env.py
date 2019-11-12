@@ -73,6 +73,12 @@ class Env:
         self._config = config
         self._dataset = dataset
         self._current_episode_index = None
+        self._override_rand_goal = \
+            config.ENVIRONMENT.OVERRIDE_RAND_GOAL.ENABLED
+        self._override_min_d = config.ENVIRONMENT.OVERRIDE_RAND_GOAL.MIN_DIST
+        self._override_radius = config.ENVIRONMENT.OVERRIDE_RAND_GOAL.RADIUS
+        self._angle = config.SIMULATOR.TURN_ANGLE
+
         if self._dataset is None and config.DATASET.TYPE:
             self._dataset = make_dataset(
                 id_dataset=config.DATASET.TYPE, config=config.DATASET
@@ -204,12 +210,51 @@ class Env:
         self._current_episode = next(self._episode_iterator)
         self.reconfigure(self._config)
 
+        if self._override_rand_goal:
+            self.rand_point_goal(self._current_episode)
+
         observations = self.task.reset(episode=self.current_episode)
         self._task.measurements.reset_measures(
             episode=self.current_episode, task=self.task
         )
 
         return observations
+
+    def rand_point_goal(self, episode):
+        env = self
+        max_test_reach = 5
+        min_dist = self._override_min_d
+        radius = self._override_radius
+        episode.goal_idx = 0
+        goal_idx = episode.goal_idx
+        angle = self._angle
+        angles = [x for x in range(-180, 180, angle)]
+
+        all_tries = 0
+        while True:
+            source_position = env.sim.sample_navigable_point()
+            if env._sim.island_radius(source_position) < 1.5:
+                continue
+
+            angle = np.radians(np.random.choice(angles))
+            source_rotation = [0, np.sin(angle / 2), 0, np.cos(angle / 2)]
+
+            tries = 0
+            while tries < max_test_reach:
+                tries += 1
+                all_tries += 1
+                position = env.sim.sample_navigable_point()
+
+                dist = env.sim.geodesic_distance(source_position, position)
+                if dist != np.inf and dist > min_dist:
+                    break
+            if tries < max_test_reach:
+                break
+
+        episode.goals[goal_idx].position = position
+        episode.goals[goal_idx].radius = radius
+        episode.start_position = source_position
+        episode.start_rotation = source_rotation
 
     def _update_step_stats(self) -> None:
         self._elapsed_steps += 1
