@@ -99,6 +99,7 @@ _C.PEPPER.RGBTopic = "/pepper_robot/naoqi_driver/camera/front/image_raw"
 _C.PEPPER.DepthTopic = "/pepper_robot/naoqi_driver/camera/depth/image_raw"
 _C.PEPPER.MoveTopic = "/move_base_simple/goal"
 _C.PEPPER.PoseTopic = "/slam_out_pose"
+_C.PEPPER.GoalTopic = "/clicked_point"
 _C.PEPPER.DisplayImages = False
 
 _C.PEPPER.EpisodePath = "./pepper_save.p"
