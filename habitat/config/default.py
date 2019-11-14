@@ -223,6 +223,8 @@ SENSOR.HEIGHT = 480
 SENSOR.WIDTH = 640
 SENSOR.HFOV = 90  # horizontal field of view in degrees
 SENSOR.POSITION = [0, 1.25, 0]
+SENSOR.V_OFFSET_NOISE = 0
+SENSOR.V_OFFSET_NUM_STEPS = 100
 # -----------------------------------------------------------------------------
 # # RGB SENSOR
 # -----------------------------------------------------------------------------
@@ -236,6 +238,13 @@ _C.SIMULATOR.DEPTH_SENSOR.TYPE = "HabitatSimDepthSensor"
 _C.SIMULATOR.DEPTH_SENSOR.MIN_DEPTH = 0.
 _C.SIMULATOR.DEPTH_SENSOR.MAX_DEPTH = 10.
 _C.SIMULATOR.DEPTH_SENSOR.NORMALIZE_DEPTH = True
+# DEPTH SENSOR 2
+# -----------------------------------------------------------------------------
+_C.SIMULATOR.DEPTH2_SENSOR = SENSOR.clone()
+_C.SIMULATOR.DEPTH2_SENSOR.TYPE = "HabitatSimDepthSensor2"
+_C.SIMULATOR.DEPTH2_SENSOR.MIN_DEPTH = 0.
+_C.SIMULATOR.DEPTH2_SENSOR.MAX_DEPTH = 10.
+_C.SIMULATOR.DEPTH2_SENSOR.NORMALIZE_DEPTH = True
 # -----------------------------------------------------------------------------
 # SEMANTIC SENSOR
 # -----------------------------------------------------------------------------
