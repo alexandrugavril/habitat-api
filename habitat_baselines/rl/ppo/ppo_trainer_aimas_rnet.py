@@ -146,15 +146,21 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         outputs = self.envs.step([a[0].item() for a in actions])
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 
-        # rgb = observations[0]["rgb"].cpu().numpy()
-        # depth = observations[0]["depth"].cpu().numpy()
+        # isc = 1
+        # rgb = observations[isc]["rgb"].cpu().numpy()
+        # depth = observations[isc]["depth"].cpu().numpy()
+        # depth2 = observations[isc]["depth2"].cpu().numpy()
         #
         # img = cv2.resize(rgb, (0, 0), fx=2., fy=2)
         # # img = img.astype(np.uint8)
         # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         # depth = cv2.resize(depth, (0, 0), fx=2., fy=2)
+        # depth2 = cv2.resize(depth2, (0, 0), fx=2., fy=2)
+        # depth2 = depth2/2.5
         # cv2.imshow("OBS", img)
+        # # cv2.imwrite(f"img_{int(time.time())}.jpg", img)
         # cv2.imshow("Depth", depth)
+        # cv2.imshow("Depth2", depth2)
         # cv2.waitKey(0)
 
         env_time += time.time() - t_step_env

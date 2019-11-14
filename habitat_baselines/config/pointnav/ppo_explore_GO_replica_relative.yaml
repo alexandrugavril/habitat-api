@@ -12,20 +12,16 @@ CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
 LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
 TEST_EPISODE_COUNT: 12
 NUM_PROCESSES: 12  # Lets move to 12 number of envs
-SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"]
+SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"] #, "DEPTH2_SENSOR"]
 NUM_UPDATES: 5000 # So as to train on 15 Mil frames
 LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
 COMMIT: "{commit_hash}"
 
-TRANSFORM:
-  ENABLED: True
-  min_scale: 1.
-  max_scale: 1.2
 TRANSFORM_RGB:
-  ENABLED: True
+  ENABLED: True # ___AUG____
 TRANSFORM_DEPTH:
-  ENABLED: True
+  ENABLED: True # ___AUG____
   std_noise: 0.2
   depth_min_th: 0.04
   depth_max_th: 0.8
@@ -36,10 +32,17 @@ TASK_CONFIG:
     SUCCESS_IF_IN_VIEW: False
     SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR']
     WITH_TARGET_ENCODING: True
-#    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
+#    POSSIBLE_ACTIONS: ['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT']
+    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
   SIMULATOR:
     HABITAT_SIM_V0:
       GPU_DEVICE_ID: {gpu_id}
+    RGB_SENSOR:
+      V_OFFSET_NOISE: 0 # ___AUG____
+      V_OFFSET_NUM_STEPS: 100
+    DEPTH_SENSOR:
+      V_OFFSET_NOISE: 0 # ___AUG____
+      V_OFFSET_NUM_STEPS: 100
 
   ENVIRONMENT:
     ITERATOR_OPTIONS:
@@ -50,6 +53,10 @@ TASK_CONFIG:
       MIN_DIST: 1.
       RADIUS: 0.2
 RL:
+  NO_OPERATION: True # ___AUG____
+  DEPTH_BLOCK_VIEW_FACTOR: 0.15 # ___AUG____
+  DEPTH_BLOCK_MIN_UNBLOCK: 0.1 # ___AUG____
+
   SLACK_REWARD: -0.01
   COLLISION_REWARD_ENABLED: True
   SUCCESS_REWARD: 10.

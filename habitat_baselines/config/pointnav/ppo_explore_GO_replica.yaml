@@ -16,11 +16,6 @@ NUM_UPDATES: 5000 # So as to train on 15 Mil frames
 LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
 COMMIT: "{commit_hash}"
-
-TRANSFORM:
-  ENABLED: True
-  min_scale: 1.
-  max_scale: 1.2
 TRANSFORM_RGB:
   ENABLED: True
 TRANSFORM_DEPTH:
