@@ -253,12 +253,11 @@ class PhotometricDistort(object):
             RandomContrast(),
             ConvertColor(transform='HSV'),
             RandomSaturation(),
-            RandomHue(),
+            # RandomHue(),
             ConvertColor(current='HSV', transform='RGB'),
             RandomContrast()
         ]
         self.rand_brightness = RandomBrightness()
-        self.rand_light_noise = RandomLightingNoise()
 
     def __call__(self, image):
         im = image.clone()
@@ -268,7 +267,7 @@ class PhotometricDistort(object):
         else:
             distort = Compose(self.pd[1:])
         im = distort(im)
-        return self.rand_light_noise(im)
+        return im
 
 
 class RandomSampleCrop(object):
@@ -319,7 +318,7 @@ class AIMASAug(object):
     def __init__(self, width, height, min_scale, max_scale):
         self.augment = Compose([
             PhotometricDistort(),
-            RandomMove(min_scale, max_scale),
+            # RandomMove(min_scale, max_scale),
             # RandomSampleCrop(),
             # RandomMirror(),
             # ToPercentCoords(),
