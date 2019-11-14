@@ -17,7 +17,7 @@ import habitat
 from habitat import Config, Dataset, SimulatorActions
 from habitat_baselines.common.baseline_registry import baseline_registry
 from habitat_baselines.common.environments import NavRLEnv
-
+import cv2
 
 @baseline_registry.register_env(name="NavObjectRLEnv")
 class NavObjectRLEnv(NavRLEnv):
@@ -29,25 +29,13 @@ class NavObjectRLEnv(NavRLEnv):
 
         self._success_if_in_view = task_cfg.SUCCESS_IF_IN_VIEW
         self._view_field = task_cfg.VIEW_FIELD_FACTOR
-        self._with_collision_reward = self._rl_config.COLLISION_REWARD_ENABLED
-        self._collision_reward = self._rl_config.COLLISION_REWARD
-        self._collision_distance = self._rl_config.COLLISION_DISTANCE
         self._num_steps = 0
         self._min_start_dist_to_goal = 1.
+
         super().__init__(config, dataset)
 
     def reset(self):
-        self._previous_action = None
-        #
-        # if self._env._current_episode is not None:
-        #     ep = self._env.current_episode
-        #     goal_idx = ep.goal_idx
-        #     success_distance = self._success_distance + ep.goals[goal_idx].radius
-        #
-        #     print("finished: ", ep.scene_id, self._num_steps,
-        #           self._distance_target(), \
-        #                          success_distance)
-        #
+
         self._num_steps = 0
 
         dist_to_goal = 0
@@ -70,19 +58,14 @@ class NavObjectRLEnv(NavRLEnv):
     def step(self, *args, **kwargs):
         self._num_steps += 1
         self._previous_action = kwargs["action"]
+
+        # There is no previous collision or no saved previous return or
+        # The agent wants to turn
         observation, reward, done, info = super().step(*args, **kwargs)
 
         if not np.isfinite(reward):
             done = True
             reward = self._rl_config.SLACK_REWARD
-        else:
-            if self._with_collision_reward:
-                if self._collision_distance <= 0:
-                    if info["collisions"]["is_collision"]:
-                        reward += self._collision_reward
-                else:
-                    if observation["proximity"][0] < self._collision_distance:
-                        reward += self._collision_reward
 
         return observation, reward, done, info
         
