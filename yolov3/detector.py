@@ -28,6 +28,12 @@ class YoloDetector:
         self.model.eval()  # Set in evaluation mode
         self.classes = utils.load_classes(self.opt['class_path'])  # Extracts class labels from file
 
+        out_size = 32
+        mode = "nearest"
+        self.b1_scale = nn.Upsample(scale_factor=out_size // 8, mode=mode)
+        self.b2_scale = nn.Upsample(scale_factor=out_size // 16, mode=mode)
+        self.b3_scale = nn.Upsample(scale_factor=out_size // 32, mode=mode)
+
     def rescale_boxes(self, boxes, current_dim, original_shape):
         """ Rescales bounding boxes to the original shape """
         orig_h, orig_w = original_shape
@@ -48,12 +54,42 @@ class YoloDetector:
         boxes[:, 3] = ((boxes[:, 3] - pad_y // 2) / unpad_h) * orig_h
         return boxes
 
+    def view_heatmap(self, detections):
+        bs = detections.size(0)
+
+        b1, b2, b3 = (detections[:, :192], detections[:, 192: 960],
+                      detections[:, 960:])
+
+        ordd = (0, 1, 4, 2, 3)
+
+        b1 = b1.view(bs, 3, 8, 8, 85).permute(*ordd).contiguous().view(bs, -1, 8, 8)
+        b2 = b2.view(bs, 3, 16, 16, 85).permute(*ordd).contiguous().view(bs, -1, 16, 16)
+        b3 = b3.view(bs, 3, 32, 32, 85).permute(*ordd).contiguous().view(bs, -1, 32, 32)
+
+        b1 = self.b1_scale(b1)
+        b2 = self.b2_scale(b2)
+        b3 = self.b3_scale(b3)
+
+        out = (b1 + b2 + b3) / 3
+        out = out.view(bs, 3, 85, 32, 32)
+        out = out.mean(dim=1)
+
+        class_prob = out[0, 5 + 56].detach().cpu().numpy()
+        class_prob = class_prob / out[0, 5:].max().item()
+
+        view = cv2.resize(class_prob, (256, 256))
+        cv2.imshow("Heat", view)
+        print(out.size())
+
     def detect(self, img, conf_thres, display = False):
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
         t_img = torch.from_numpy(img.astype('float') / 255.0).cuda().permute(2, 0, 1).unsqueeze(0)
         t_img = t_img.type(torch.cuda.FloatTensor)
         detections = self.model(t_img)
+
+        print(self.view_heatmap(detections))
+
         print(detections.size())
         detections = utils.non_max_suppression(detections, conf_thres, self.nms_thres)[0]
         # Draw bounding boxes and labels of detections
@@ -79,9 +115,6 @@ class YoloDetector:
             cv2.waitKey(0)
 
         return detections, img_disp
-
-    def detect(self, img, display = False):
-        return self.detect(img, self.conf_thres, display)
 
 import torch
 
@@ -110,8 +143,20 @@ for i, row in enumerate(range(hw-cube_front_w-cube_depth_w, hw-cube_front_w)):
     img[row, hw-offset: hw+offset] = depths[i]
 
 if __name__ == "__main__":
+    import glob
+    import numpy as np
+    import torch
+
     yolo = YoloDetector('/raid/workspace/alexandrug/habitat-api/yolov3/config/yolo_config.yaml')
-    img = cv2.imread('/raid/workspace/alexandrug/habitat-api/test.png')
-    img = cv2.resize(img, (256, 256))
-    print(img.shape)
-    yolo.detect(img, False)
+
+    files = glob.glob("/raid/workspace/alexandrug/habitat-api/results"
+                   "/pointgoal_obj_inview/video_dir/episode_data/*")
+
+    for f in files:
+        data = torch.load(f)
+        for i in range(len(data["rgb"])):
+            img = data["rgb"][i].cpu().numpy().astype(np.uint8)
+
+            img = cv2.resize(img, (256, 256))
+            print(img.shape)
+            yolo.detect(img, 0.6, True)
