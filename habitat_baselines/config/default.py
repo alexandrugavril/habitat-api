@@ -76,6 +76,10 @@ _C.RL.COLLISION_REWARD_ENABLED = False
 _C.RL.COLLISION_DISTANCE = 0.
 _C.RL.COLLISION_REWARD = -1.
 
+_C.RL.NO_OPERATION = False
+_C.RL.DEPTH_BLOCK_VIEW_FACTOR = 0.15
+_C.RL.DEPTH_BLOCK_MIN_UNBLOCK = 0.1
+
 # -----------------------------------------------------------------------------
 # DETECTOR
 _C.DETECTOR = CN()
