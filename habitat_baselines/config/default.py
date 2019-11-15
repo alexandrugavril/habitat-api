@@ -112,6 +112,24 @@ _C.PEPPER.EpisodePath = "./pepper_save.p"
 # PROXIMAL POLICY OPTIMIZATION (PPO)
 # -----------------------------------------------------------------------------
 _C.RL.PPO = CN()
+_C.RL.PPO.actor_critic = CN()
+_C.RL.PPO.actor_critic.fixed_distribution = []
+_C.RL.PPO.actor_critic.type = "ExploreNavBaselinePolicy"
+_C.RL.PPO.actor_critic.num_recurrent_layers = 1
+_C.RL.PPO.actor_critic.rnn_type = "GRU"
+_C.RL.PPO.actor_critic.aux = []
+_C.RL.PPO.actor_critic.RelativePositionPredictor = CN()
+_C.RL.PPO.actor_critic.RelativePositionPredictor.name = "rel_pos"
+_C.RL.PPO.actor_critic.RelativePositionPredictor.out_size = 3
+_C.RL.PPO.actor_critic.RelativePositionPredictor.loss_coeff = 1.
+_C.RL.PPO.actor_critic.RelativePositionPredictor.target = "gps_compass"
+
+_C.RL.PPO.actor_critic.SonarPredictor = CN()
+_C.RL.PPO.actor_critic.SonarPredictor.name = "sonar"
+_C.RL.PPO.actor_critic.SonarPredictor.out_size = 1
+_C.RL.PPO.actor_critic.SonarPredictor.loss_coeff = 1.
+_C.RL.PPO.actor_critic.SonarPredictor.target = "depth2"
+
 _C.RL.PPO.visual_encoder = "SimpleCNN"
 _C.RL.PPO.visual_encoder_dropout = 0.0
 _C.RL.PPO.channel_scale = 1
@@ -120,6 +138,7 @@ _C.RL.PPO.ppo_epoch = 4
 _C.RL.PPO.num_mini_batch = 4
 _C.RL.PPO.value_loss_coef = 0.5
 _C.RL.PPO.entropy_coef = 0.01
+_C.RL.PPO.action_loss_coef = 1.0
 _C.RL.PPO.lr = 2.5e-4
 _C.RL.PPO.eps = 1e-5
 _C.RL.PPO.max_grad_norm = 0.5
