@@ -39,6 +39,18 @@ class CustomFixedCategorical(torch.distributions.Categorical):
         return self.probs.argmax(dim=-1, keepdim=True)
 
 
+class FixedDistributionNet(nn.Module):
+    def __init__(self, distribution):
+        super().__init__()
+        self.distribution = torch.tensor(distribution)
+
+    def forward(self, x):
+        dist = self.distribution
+        dist = dist.unsqueeze(0).expand((x.shape[0], len(self.distribution)))
+        dist = dist.to(x.device)
+        return CustomFixedCategorical(probs=dist)
+
+
 class CategoricalNet(nn.Module):
     def __init__(self, num_inputs, num_outputs):
         super().__init__()
