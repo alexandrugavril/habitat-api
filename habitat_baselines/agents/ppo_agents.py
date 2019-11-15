@@ -121,7 +121,8 @@ class PPOAgent(Agent):
             batch[sensor] = batch[sensor].to(self.device)
 
         with torch.no_grad():
-            _, actions, _, self.test_recurrent_hidden_states = self.actor_critic.act(
+            _, actions, _, self.test_recurrent_hidden_states,aux_out \
+                = self.actor_critic.act(
                 batch,
                 self.test_recurrent_hidden_states,
                 self.prev_actions,
