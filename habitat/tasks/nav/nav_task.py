@@ -33,6 +33,7 @@ from habitat.utils.visualizations import fog_of_war, maps
 MAP_THICKNESS_SCALAR: int = 1250
 MAP_INVALID_POINT = 0
 
+
 def merge_sim_episode_config(
     sim_config: Config, episode: Type[Episode]
 ) -> Any:
@@ -107,8 +108,6 @@ class NavigationEpisode(Episode):
     )
     start_room: Optional[str] = None
     shortest_paths: Optional[List[ShortestPathPoint]] = None
-
-
 
 
 @registry.register_sensor
@@ -372,6 +371,64 @@ class EpisodicGPSSensor(Sensor):
             )
         else:
             return agent_position.astype(np.float32)
+
+
+@registry.register_sensor(name="GPSCompassSensor")
+class EpisodicGPSCompassSensor(HeadingSensor):
+    def __init__(
+        self, sim: Simulator, config: Config, *args: Any, **kwargs: Any
+    ):
+        self._sim = sim
+
+        self._dimensionality = getattr(config, "DIMENSIONALITY", 2)
+        assert self._dimensionality in [3, 4]
+        super().__init__(sim=sim, config=config, *args, **kwargs)
+
+    def _get_uuid(self, *args: Any, **kwargs: Any):
+        return "gps_compass"
+
+    def _get_sensor_type(self, *args: Any, **kwargs: Any):
+        return SensorTypes.POSITION
+
+    def _get_observation_space(self, *args: Any, **kwargs: Any):
+        sensor_shape = (self._dimensionality,)
+        return spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=sensor_shape,
+            dtype=np.float32,
+        )
+
+    def get_observation(
+        self, *args: Any, observations, episode, **kwargs: Any
+    ):
+        agent_state = self._sim.get_agent_state()
+
+        origin = np.array(episode.start_position, dtype=np.float32)
+        rotation_world_start = quaternion_from_coeff(episode.start_rotation)
+
+        agent_position = agent_state.position
+
+        agent_position = quaternion_rotate_vector(
+            rotation_world_start.inverse(), agent_position - origin
+        )
+
+        # Get rotation
+        rotation_world_agent = agent_state.rotation
+        rotation_world_start = quaternion_from_coeff(episode.start_rotation)
+
+        heading = self._quat_to_xy_heading(
+            rotation_world_agent.inverse() * rotation_world_start
+        )
+
+        if self._dimensionality == 3:
+            pos = np.array(
+                [-agent_position[2], agent_position[0]], dtype=np.float32
+            )
+        else:
+            pos = agent_position.astype(np.float32)
+
+        return np.concatenate([pos, np.array([heading])])
 
 
 @registry.register_sensor
