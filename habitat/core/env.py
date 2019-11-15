@@ -208,10 +208,11 @@ class Env:
         assert len(self.episodes) > 0, "Episodes list is empty"
 
         self._current_episode = next(self._episode_iterator)
-        self.reconfigure(self._config)
 
         if self._override_rand_goal:
             self.rand_point_goal(self._current_episode)
+
+        self.reconfigure(self._config)
 
         observations = self.task.reset(episode=self.current_episode)
         self._task.measurements.reset_measures(
