@@ -86,6 +86,7 @@ class PPO(nn.Module):
                     action_log_probs,
                     dist_entropy,
                     _,
+                    aux_out
                 ) = self.actor_critic.evaluate_actions(
                     obs_batch,
                     recurrent_hidden_states_batch,

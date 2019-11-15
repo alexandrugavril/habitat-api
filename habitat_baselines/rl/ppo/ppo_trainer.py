@@ -128,6 +128,7 @@ class PPOTrainer(BaseRLTrainer):
                 actions,
                 actions_log_probs,
                 recurrent_hidden_states,
+                aux_out
             ) = self.actor_critic.act(
                 step_observation,
                 rollouts.recurrent_hidden_states[rollouts.step],
@@ -235,6 +236,7 @@ class PPOTrainer(BaseRLTrainer):
             self.envs.observation_spaces[0],
             self.envs.action_spaces[0],
             ppo_cfg.hidden_size,
+            num_recurrent_layers=self.actor_critic.net.num_recurrent_layers
         )
         rollouts.to(self.device)
 
@@ -452,7 +454,8 @@ class PPOTrainer(BaseRLTrainer):
             current_episodes = self.envs.current_episodes()
 
             with torch.no_grad():
-                _, actions, _, test_recurrent_hidden_states = self.actor_critic.act(
+                _, actions, _, test_recurrent_hidden_states, aux_out \
+                    = self.actor_critic.act(
                     batch,
                     test_recurrent_hidden_states,
                     prev_actions,

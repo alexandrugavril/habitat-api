@@ -5,31 +5,18 @@
 # LICENSE file in the root directory of this source tree.
 import abc
 
-import numpy as np
 import torch
-import torch.nn as nn
-import cv2
 
-from habitat_baselines.common.utils import CategoricalNet, Flatten
 from habitat_baselines.rl.models.rnn_state_encoder import RNNStateEncoder
-from habitat_baselines.rl.models.simple_cnn import SimpleCNN
-from habitat_baselines.rl.models.simple_cnn_with_resnet import SimpleCNNResnet
 
 from habitat_baselines.rl.ppo.policy import Policy, Net
-from habitat.tasks.nav.nav_task_multi_goal import CLASSES
-
-from yolov3.models import Darknet
-from yolov3.utils import utils as yolo_utils
-
-VISUAL_ENCODER_MODELS = dict({
-    "SimpleCNN": SimpleCNN,
-    "SimpleCNNResnet": SimpleCNNResnet,
-})
+from habitat_baselines.rl.ppo import VISUAL_ENCODER_MODELS
 
 
 class ExploreNavBaselinePolicy(Policy):
     def __init__(
         self,
+        cfg,
         observation_space,
         action_space,
         goal_sensor_uuid,
@@ -115,4 +102,5 @@ class ExploreNavBaselineNet(Net):
         x = torch.cat(x, dim=1)
         x, rnn_hidden_states = self.state_encoder(x, rnn_hidden_states, masks)
 
-        return x, rnn_hidden_states
+        aux_out = dict()
+        return x, rnn_hidden_states, aux_out
