@@ -158,14 +158,14 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         outputs = self.envs.step([a[0].item() for a in actions])
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 
-        # isc = 0
+        # isc = 6
         # rgb = observations[isc]["rgb"].cpu().numpy()
         # depth = observations[isc]["depth"].cpu().numpy()
         # depth2 = observations[isc]["depth2"].cpu().numpy()
         #
         # # loc
         # loc = observations[isc]["gps_compass"]
-        # print("New loc:", loc)
+        # print("New loc:", loc, actions[isc].item())
         # prev_pos.append(loc)
         # all_pos = np.array(prev_pos)
         #
@@ -180,10 +180,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         # cv2.imshow("Depth", depth)
         # cv2.imshow("Depth2", depth2)
         #
-        # cv2.waitKey(1)
+        # cv2.waitKey(0)
         #
-        # plt.scatter(all_pos[:, 0], all_pos[:, 1])
-        # plt.show()
+        # #plt.scatter(all_pos[:, 0], all_pos[:, 1])
+        # #plt.show()
 
         env_time += time.time() - t_step_env
 
