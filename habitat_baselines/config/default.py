@@ -44,6 +44,8 @@ _C.EVAL_MODE = False
 # -----------------------------------------------------------------------------
 # IMAGE TRANSFORM
 # -----------------------------------------------------------------------------
+_C.BATCH_INPUT = 1
+
 _C.TRANSFORM = CN()
 _C.TRANSFORM.ENABLED = False
 _C.TRANSFORM.min_scale = 1.
@@ -123,6 +125,12 @@ _C.RL.PPO.actor_critic.RelativePositionPredictor.name = "rel_pos"
 _C.RL.PPO.actor_critic.RelativePositionPredictor.out_size = 3
 _C.RL.PPO.actor_critic.RelativePositionPredictor.loss_coeff = 1.
 _C.RL.PPO.actor_critic.RelativePositionPredictor.target = "gps_compass"
+
+_C.RL.PPO.actor_critic.ActionPrediction = CN()
+_C.RL.PPO.actor_critic.ActionPrediction.name = "action"
+_C.RL.PPO.actor_critic.ActionPrediction.out_size = 3
+_C.RL.PPO.actor_critic.ActionPrediction.loss_coeff = 1.
+_C.RL.PPO.actor_critic.ActionPrediction.target = ""
 
 _C.RL.PPO.actor_critic.SonarPredictor = CN()
 _C.RL.PPO.actor_critic.SonarPredictor.name = "sonar"
