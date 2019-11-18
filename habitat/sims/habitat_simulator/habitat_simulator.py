@@ -49,6 +49,8 @@ class HabitatSimRGBSensor(RGBSensor):
 
     def __init__(self, config):
         self.sim_sensor_type = habitat_sim.SensorType.COLOR
+        self.batch = config.BATCH
+
         super().__init__(config=config)
         self.h = self.config.HEIGHT
         self.w = self.config.WIDTH
@@ -65,7 +67,7 @@ class HabitatSimRGBSensor(RGBSensor):
         return spaces.Box(
             low=0,
             high=255,
-            shape=(self.config.HEIGHT, self.config.WIDTH, RGBSENSOR_DIMENSION),
+            shape=(self.config.HEIGHT, self.config.WIDTH, self.batch * 3),
             dtype=np.uint8,
         )
 
@@ -95,6 +97,7 @@ class HabitatSimDepthSensor(DepthSensor):
 
     def __init__(self, config):
         self.sim_sensor_type = habitat_sim.SensorType.DEPTH
+        self.batch = config.BATCH
 
         if config.NORMALIZE_DEPTH:
             self.min_depth_value = 0
@@ -120,7 +123,7 @@ class HabitatSimDepthSensor(DepthSensor):
         return spaces.Box(
             low=self.min_depth_value,
             high=self.max_depth_value,
-            shape=(self.config.HEIGHT, self.config.WIDTH, 1),
+            shape=(self.config.HEIGHT, self.config.WIDTH, self.batch),
             dtype=np.float32,
         )
 
