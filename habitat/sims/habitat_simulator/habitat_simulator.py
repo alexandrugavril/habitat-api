@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any, List, Optional
 
 import numpy as np
+import torch
 from gym import Space, spaces
 
 import habitat_sim
@@ -41,6 +42,10 @@ def check_sim_obs(obs, sensor):
         "Observation corresponding to {} not present in "
         "simulator's observations".format(sensor.uuid)
     )
+    if isinstance(obs, np.ndarray):
+        obs = torch.from_numpy(obs)
+
+    return obs
 
 
 @registry.register_sensor
@@ -73,7 +78,7 @@ class HabitatSimRGBSensor(RGBSensor):
 
     def get_observation(self, sim_obs):
         obs = sim_obs.get(self.uuid, None)
-        check_sim_obs(obs, self)
+        obs = check_sim_obs(obs, self)
 
         # remove alpha channel
         obs = obs[:, :, :RGBSENSOR_DIMENSION]
@@ -129,7 +134,7 @@ class HabitatSimDepthSensor(DepthSensor):
 
     def get_observation(self, sim_obs):
         obs = sim_obs.get(self.uuid, None)
-        check_sim_obs(obs, self)
+        obs = check_sim_obs(obs, self)
 
         if isinstance(obs, np.ndarray):
             obs = np.clip(obs, self.config.MIN_DEPTH, self.config.MAX_DEPTH)
@@ -175,7 +180,7 @@ class HabitatSimDepthSensor2(HabitatSimDepthSensor):
 
     def get_observation(self, sim_obs):
         obs = sim_obs.get(self.uuid, None)
-        check_sim_obs(obs, self)
+        obs = check_sim_obs(obs, self)
 
         if isinstance(obs, np.ndarray):
             obs = np.clip(obs, self.config.MIN_DEPTH, self.config.MAX_DEPTH)
@@ -214,7 +219,7 @@ class HabitatSimSemanticSensor(SemanticSensor):
 
     def get_observation(self, sim_obs):
         obs = sim_obs.get(self.uuid, None)
-        check_sim_obs(obs, self)
+        obs = check_sim_obs(obs, self)
         return obs
 
 
