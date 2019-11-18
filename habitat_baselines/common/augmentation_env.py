@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional, Type, Union
 import numpy as np
 import torch
+import collections
 
 import habitat
 from habitat import Config, Dataset, SimulatorActions
@@ -15,12 +16,16 @@ class AugmentEnv(habitat.RLEnv):
         self.cfg_transform = config.TRANSFORM
         self.cfg_rgb = config.TRANSFORM_RGB
         self.cfg_depth = config.TRANSFORM_DEPTH
+        self.batch_input = config.BATCH_INPUT
         self._eval_mode = config.EVAL_MODE
 
         self.photo_distort = PhotometricDistort()
         min_scale = self.cfg_transform.min_scale
         max_scale = self.cfg_transform.max_scale
         self.move_image = RandomMove(min_scale, max_scale)
+
+        self._multi_batch_rgb = collections.deque(maxlen=self.batch_input)
+        self._multi_batch_depth = collections.deque(maxlen=self.batch_input)
 
     def _process_obs(self, obs):
 
@@ -39,7 +44,21 @@ class AugmentEnv(habitat.RLEnv):
             obs["rgb"] = data[:, :, :3]
             obs["depth"] = data[:, :, -1].unsqueeze(2)
 
+        if self.cfg_transform.ENABLED:
+            data = torch.cat([obs["rgb"].float(), obs["depth"]], dim=2)
+            data = self.move_image(data)
+            obs["rgb"] = data[:, :, :3]
+            obs["depth"] = data[:, :, -1].unsqueeze(2)
+
         obs["rgb"] = obs["rgb"].byte()
+
+        if self.batch_input > 1:
+            self._multi_batch_rgb.append(obs["rgb"])
+            self._multi_batch_depth.append(obs["depth"])
+
+            obs["rgb"] = torch.cat(list(self._multi_batch_rgb), axis=2)
+            obs["depth"] = torch.cat(list(self._multi_batch_depth), axis=2)
+
         return obs
 
     def process_depth(self, depth):
@@ -71,6 +90,16 @@ class AugmentEnv(habitat.RLEnv):
     def reset(self):
 
         observations = super().reset()
+
+        if self.batch_input > 1:
+            rgb = torch.zeros_like(observations["rgb"])
+            self._multi_batch_rgb = collections.deque(
+                [rgb] * self.batch_input, maxlen=self.batch_input)
+
+            depth = torch.zeros_like(observations["depth"])
+            self._multi_batch_depth = collections.deque(
+                [depth] * self.batch_input, maxlen=self.batch_input)
+
         observations = self._process_obs(observations)
 
         return observations

@@ -231,6 +231,7 @@ SENSOR.HFOV = 90  # horizontal field of view in degrees
 SENSOR.POSITION = [0, 1.25, 0]
 SENSOR.V_OFFSET_NOISE = 0
 SENSOR.V_OFFSET_NUM_STEPS = 100
+SENSOR.BATCH = 1
 # -----------------------------------------------------------------------------
 # # RGB SENSOR
 # -----------------------------------------------------------------------------
