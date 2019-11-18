@@ -382,6 +382,9 @@ class EpisodicGPSCompassSensor(HeadingSensor):
 
         self._dimensionality = getattr(config, "DIMENSIONALITY", 2)
         assert self._dimensionality in [3, 4]
+        self._prev_pos = None
+        self._prev_heading = None
+        self._prev_rotation = None
         super().__init__(sim=sim, config=config, *args, **kwargs)
 
     def _get_uuid(self, *args: Any, **kwargs: Any):
@@ -402,33 +405,44 @@ class EpisodicGPSCompassSensor(HeadingSensor):
     def get_observation(
         self, *args: Any, observations, episode, **kwargs: Any
     ):
-        agent_state = self._sim.get_agent_state()
+        env_reset = "action" not in kwargs
 
-        origin = np.array(episode.start_position, dtype=np.float32)
-        rotation_world_start = quaternion_from_coeff(episode.start_rotation)
+        agent_state = self._sim.get_agent_state()
+        if env_reset:
+            self._prev_rotation = agent_state.rotation
+            self._prev_pos = agent_state.position
+            self._prev_heading = np.array([self._quat_to_xy_heading(
+                agent_state.rotation)])
 
         agent_position = agent_state.position
-
-        agent_position = quaternion_rotate_vector(
-            rotation_world_start.inverse(), agent_position - origin
+        relative_pos = quaternion_rotate_vector(
+            self._prev_rotation.inverse(), agent_position - self._prev_pos
         )
 
-        # Get rotation
-        rotation_world_agent = agent_state.rotation
-        rotation_world_start = quaternion_from_coeff(episode.start_rotation)
+        heading = np.array([self._quat_to_xy_heading(
+            agent_state.rotation
+        )])
+        relative_heading = heading - self._prev_heading
+        if np.abs(relative_heading) > np.pi:
+            relative_heading = np.mod(relative_heading, 2 * np.pi *
+                                      -np.sign(relative_heading))
 
-        heading = self._quat_to_xy_heading(
-            rotation_world_agent.inverse() * rotation_world_start
-        )
+        # relative_heading = -1 * np.sign(relative_heading) *
+        #  np.mod(np.sign(relative_heading) * -h, 2 * np.pi)
+        # relative_heading = np.mod(relative_heading, np.pi * 2)
 
         if self._dimensionality == 3:
             pos = np.array(
-                [-agent_position[2], agent_position[0]], dtype=np.float32
+                [-relative_pos[2], relative_pos[0]], dtype=np.float32
             )
         else:
-            pos = agent_position.astype(np.float32)
+            pos = relative_pos.astype(np.float32)
 
-        return np.concatenate([pos, np.array([heading])])
+        self._prev_pos = agent_position
+        self._prev_heading = heading
+        self._prev_rotation = agent_state.rotation
+
+        return np.concatenate([pos, relative_heading])
 
 
 @registry.register_sensor
