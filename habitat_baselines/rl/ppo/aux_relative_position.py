@@ -18,8 +18,7 @@ class RelativePositionPredictor(nn.Module):
             nn.Linear(rnn_size, out_size),
         )
 
-        # self.criterion = nn.MSELoss()
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.MSELoss()
 
     def forward(self, observations, prev_actions, masks,
                 perception_embed, target_encoding, rnn_out):
@@ -31,8 +30,7 @@ class RelativePositionPredictor(nn.Module):
     def calc_loss(self, x, obs_batch, recurrent_hidden_states_batch,
                   prev_actions_batch, masks_batch, actions_batch):
 
-        target = prev_actions_batch.squeeze(1)
-        # target = obs_batch[self.target]
+        target = obs_batch[self.target]
 
         loss = self.criterion(x, target)
         return self.loss_coeff * loss
