@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from habitat_baselines.rl.ppo.RAdam import RAdam
 from habitat_baselines.rl.ppo import PPO
 EPS_PPO = 1e-5
 
