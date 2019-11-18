@@ -14,10 +14,12 @@ from habitat_baselines.rl.ppo import VISUAL_ENCODER_MODELS
 
 from habitat_baselines.rl.ppo.aux_relative_position import RelativePositionPredictor
 from habitat_baselines.rl.ppo.aux_sonar import SonarPredictor
+from habitat_baselines.rl.ppo.aux_action import ActionPrediction
 
 AUX_CLASSES = dict({
     "rel_pos": RelativePositionPredictor,
-    "sonar": SonarPredictor
+    "sonar": SonarPredictor,
+    "action": ActionPrediction,
 })
 
 
