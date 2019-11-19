@@ -97,6 +97,7 @@ class PPOTrainerAimas(PPOTrainer):
                 actions,
                 actions_log_probs,
                 recurrent_hidden_states,
+                aux_out
             ) = self.actor_critic.act(
                 step_observation,
                 rollouts.recurrent_hidden_states[rollouts.step],

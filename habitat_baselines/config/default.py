@@ -44,6 +44,8 @@ _C.EVAL_MODE = False
 # -----------------------------------------------------------------------------
 # IMAGE TRANSFORM
 # -----------------------------------------------------------------------------
+_C.BATCH_INPUT = 1
+
 _C.TRANSFORM = CN()
 _C.TRANSFORM.ENABLED = False
 _C.TRANSFORM.min_scale = 1.
@@ -75,6 +77,10 @@ _C.RL.SLACK_REWARD = -0.01
 _C.RL.COLLISION_REWARD_ENABLED = False
 _C.RL.COLLISION_DISTANCE = 0.
 _C.RL.COLLISION_REWARD = -1.
+
+_C.RL.NO_OPERATION = False
+_C.RL.DEPTH_BLOCK_VIEW_FACTOR = 0.15
+_C.RL.DEPTH_BLOCK_MIN_UNBLOCK = 0.1
 
 # -----------------------------------------------------------------------------
 # DETECTOR
@@ -110,6 +116,30 @@ _C.PEPPER.EpisodePath = "19.11.2019 11:46:14pepper_save.p"
 # PROXIMAL POLICY OPTIMIZATION (PPO)
 # -----------------------------------------------------------------------------
 _C.RL.PPO = CN()
+_C.RL.PPO.actor_critic = CN()
+_C.RL.PPO.actor_critic.fixed_distribution = []
+_C.RL.PPO.actor_critic.type = "ExploreNavBaselinePolicy"
+_C.RL.PPO.actor_critic.num_recurrent_layers = 1
+_C.RL.PPO.actor_critic.rnn_type = "GRU"
+_C.RL.PPO.actor_critic.aux = []
+_C.RL.PPO.actor_critic.RelativePositionPredictor = CN()
+_C.RL.PPO.actor_critic.RelativePositionPredictor.name = "rel_pos"
+_C.RL.PPO.actor_critic.RelativePositionPredictor.out_size = 3
+_C.RL.PPO.actor_critic.RelativePositionPredictor.loss_coeff = 1.
+_C.RL.PPO.actor_critic.RelativePositionPredictor.target = "gps_compass"
+
+_C.RL.PPO.actor_critic.ActionPrediction = CN()
+_C.RL.PPO.actor_critic.ActionPrediction.name = "action"
+_C.RL.PPO.actor_critic.ActionPrediction.out_size = 3
+_C.RL.PPO.actor_critic.ActionPrediction.loss_coeff = 1.
+_C.RL.PPO.actor_critic.ActionPrediction.target = ""
+
+_C.RL.PPO.actor_critic.SonarPredictor = CN()
+_C.RL.PPO.actor_critic.SonarPredictor.name = "sonar"
+_C.RL.PPO.actor_critic.SonarPredictor.out_size = 1
+_C.RL.PPO.actor_critic.SonarPredictor.loss_coeff = 1.
+_C.RL.PPO.actor_critic.SonarPredictor.target = "depth2"
+
 _C.RL.PPO.visual_encoder = "SimpleCNN"
 _C.RL.PPO.visual_encoder_dropout = 0.0
 _C.RL.PPO.channel_scale = 1
@@ -118,6 +148,7 @@ _C.RL.PPO.ppo_epoch = 4
 _C.RL.PPO.num_mini_batch = 4
 _C.RL.PPO.value_loss_coef = 0.5
 _C.RL.PPO.entropy_coef = 0.01
+_C.RL.PPO.action_loss_coef = 1.0
 _C.RL.PPO.lr = 2.5e-4
 _C.RL.PPO.eps = 1e-5
 _C.RL.PPO.max_grad_norm = 0.5

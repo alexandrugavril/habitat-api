@@ -5,7 +5,7 @@ import torch.nn as nn
 from habitat_baselines.common.utils import Flatten
 
 
-class SimpleCNN(nn.Module):
+class SimpleCNNRelu(nn.Module):
     r"""A Simple 3-Conv CNN followed by a fully connected layer
 
     Takes in observations and produces an embedding of the rgb and/or depth components
@@ -36,6 +36,7 @@ class SimpleCNN(nn.Module):
 
         self._drop_prob = drop_prob
 
+        print("i am here---" * 100)
         if self._n_input_rgb > 0:
             cnn_dims = np.array(
                 observation_space.spaces["rgb"].shape[:2], dtype=np.float32
@@ -75,7 +76,6 @@ class SimpleCNN(nn.Module):
                     kernel_size=self._cnn_layers_kernel_size[1],
                     stride=self._cnn_layers_stride[1],
                 ),
-                nn.Dropout2d(p=self._drop_prob),
                 nn.ReLU(True),
                 nn.Conv2d(
                     in_channels=64 * ds,
@@ -83,7 +83,8 @@ class SimpleCNN(nn.Module):
                     kernel_size=self._cnn_layers_kernel_size[2],
                     stride=self._cnn_layers_stride[2],
                 ),
-                # nn.ReLU(True),
+                nn.ReLU(True),
+                nn.Dropout(p=self._drop_prob),
                 Flatten(),
                 nn.Linear(32 * ds * cnn_dims[0] * cnn_dims[1], output_size),
                 nn.ReLU(True),

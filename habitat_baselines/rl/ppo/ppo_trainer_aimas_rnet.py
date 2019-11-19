@@ -29,12 +29,19 @@ from habitat_baselines.common.baseline_registry import baseline_registry
 from habitat_baselines.common.utils import (
     batch_obs,
 )
-from habitat_baselines.rl.ppo import PPO
+from habitat_baselines.rl.ppo.aux_ppo import AuxPPO
 from habitat_baselines.rl.ppo.aimas_reachability_policy import ExploreNavBaselinePolicy
+from habitat_baselines.rl.ppo.aimas_reachability_policy_aux import ExploreNavBaselinePolicyAux
 from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer
 
 
 from habitat_baselines.rl.ppo.reachability_policy import ReachabilityPolicy
+
+
+ACTOR_CRITICS = dict({
+    "ExploreNavBaselinePolicy": ExploreNavBaselinePolicy,
+    "ExploreNavBaselinePolicyAux": ExploreNavBaselinePolicyAux,
+})
 
 
 @baseline_registry.register_trainer(name="ppoAimasReachability")
@@ -55,7 +62,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         # Get object index
         logger.add_filehandler(cfg.LOG_FILE)
-
+        self.prev_pos = []
         # -- Reachability stuff
         # First pass add rollouts detector_features memory
         train_reachability = cfg.RL.REACHABILITY.train
@@ -78,7 +85,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.skip_train_ppo_without_rtrain = \
             cfg.RL.REACHABILITY.skip_train_ppo_without_rtrain
 
-        self.actor_critic = ExploreNavBaselinePolicy(
+        self.actor_critic = ACTOR_CRITICS[cfg.RL.PPO.actor_critic.type](
+            cfg=cfg.RL.PPO.actor_critic,
             observation_space=self.envs.observation_spaces[0],
             action_space=self.envs.action_spaces[0],
             hidden_size=ppo_cfg.hidden_size,
@@ -92,13 +100,14 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         )
         self.actor_critic.to(self.device)
 
-        self.agent = PPO(
+        self.agent = AuxPPO(
             actor_critic=self.actor_critic,
             clip_param=ppo_cfg.clip_param,
             ppo_epoch=ppo_cfg.ppo_epoch,
             num_mini_batch=ppo_cfg.num_mini_batch,
             value_loss_coef=ppo_cfg.value_loss_coef,
             entropy_coef=ppo_cfg.entropy_coef,
+            action_loss_coef=ppo_cfg.action_loss_coef,
             lr=ppo_cfg.lr,
             eps=ppo_cfg.eps,
             max_grad_norm=ppo_cfg.max_grad_norm,
@@ -121,6 +130,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         t_sample_action = time.time()
         # sample actions
+        prev_pos = self.prev_pos
+        import matplotlib.pyplot as plt
 
         with torch.no_grad():
             step_observation = {
@@ -132,6 +143,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                 actions,
                 actions_log_probs,
                 recurrent_hidden_states,
+                aux_out
             ) = self.actor_critic.act(
                 step_observation,
                 rollouts.recurrent_hidden_states[rollouts.step],
@@ -146,16 +158,32 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         outputs = self.envs.step([a[0].item() for a in actions])
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 
-        # rgb = observations[0]["rgb"].cpu().numpy()
-        # depth = observations[0]["depth"].cpu().numpy()
+        # isc = 6
+        # rgb = observations[isc]["rgb"].cpu().numpy()
+        # depth = observations[isc]["depth"].cpu().numpy()
+        # depth2 = observations[isc]["depth2"].cpu().numpy()
+        #
+        # # loc
+        # loc = observations[isc]["gps_compass"]
+        # print("New loc:", loc, actions[isc].item())
+        # prev_pos.append(loc)
+        # all_pos = np.array(prev_pos)
         #
         # img = cv2.resize(rgb, (0, 0), fx=2., fy=2)
         # # img = img.astype(np.uint8)
         # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
         # depth = cv2.resize(depth, (0, 0), fx=2., fy=2)
+        # depth2 = cv2.resize(depth2, (0, 0), fx=2., fy=2)
+        # depth2 = depth2/2.5
         # cv2.imshow("OBS", img)
+        # # cv2.imwrite(f"img_{int(time.time())}.jpg", img)
         # cv2.imshow("Depth", depth)
+        # cv2.imshow("Depth2", depth2)
+        #
         # cv2.waitKey(0)
+        #
+        # #plt.scatter(all_pos[:, 0], all_pos[:, 1])
+        # #plt.show()
 
         env_time += time.time() - t_step_env
 
@@ -216,9 +244,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         )
 
         if not self.skip_train_ppo_without_rtrain or self.r_policy.is_trained:
-            value_loss, action_loss, dist_entropy = self.agent.update(rollouts)
+            value_loss, action_loss, dist_entropy, aux_loss = \
+                self.agent.update(rollouts)
         else:
-            value_loss, action_loss, dist_entropy = (0, 0, 0)
+            value_loss, action_loss, dist_entropy, aux_loss = (0, 0, 0, 0)
 
         rollouts.after_update()
 
@@ -227,6 +256,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             value_loss,
             action_loss,
             dist_entropy,
+            aux_loss
         )
 
     def add_new_based_on_cfg(self):
@@ -275,6 +305,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             self.envs.observation_spaces[0],
             self.envs.action_spaces[0],
             ppo_cfg.hidden_size,
+            num_recurrent_layers=self.actor_critic.net.num_recurrent_layers
         )
         rollouts.to(self.device)
 
@@ -333,9 +364,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     env_time += delta_env_time
                     count_steps += delta_steps
 
-                delta_pth_time, value_loss, action_loss, dist_entropy = self._update_agent(
-                    ppo_cfg, rollouts
-                )
+                delta_pth_time, value_loss, action_loss, dist_entropy,\
+                    aux_loss = self._update_agent(ppo_cfg, rollouts)
 
                 # TODO check if LR is init
                 if ppo_cfg.use_linear_lr_decay:
@@ -347,7 +377,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                 window_episode_go_reward.append(episode_go_rewards.clone())
                 window_episode_counts.append(episode_counts.clone())
 
-                losses = [value_loss, action_loss]
+                value_names = ["value", "policy", "entropy"] + list(
+                    aux_loss.keys())
+                losses = [value_loss, action_loss, dist_entropy] + list(
+                    aux_loss.values())
+
                 stats = zip(
                     ["count", "reward", "reward_go"],
                     [window_episode_counts, window_episode_reward, window_episode_go_reward],
@@ -372,7 +406,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
                 writer.add_scalars(
                     "losses",
-                    {k: l for l, k in zip(losses, ["value", "policy"])},
+                    {k: l for l, k in zip(losses, value_names)},
                     count_steps,
                 )
 
@@ -409,6 +443,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                                 (window_go_rewards / window_counts).item(),
                             )
                         )
+                        logger.info(
+                            f"Aux losses: {list(zip(value_names, losses))}"
+                            )
                     else:
                         logger.info("No episodes finish in current window")
 
@@ -533,7 +570,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             current_episodes = self.envs.current_episodes()
 
             with torch.no_grad():
-                _, actions, _, test_recurrent_hidden_states = self.actor_critic.act(
+                _, actions, _, test_recurrent_hidden_states, aux_out \
+                    = self.actor_critic.act(
                     batch,
                     test_recurrent_hidden_states,
                     prev_actions,

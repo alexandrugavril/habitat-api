@@ -36,15 +36,29 @@ class NavRLEnv(AugmentEnv):
         super().__init__(config, dataset)
 
         self._rl_config = config.RL
-        self._core_env_config = config.TASK_CONFIG
+        self._core_env_config = task = config.TASK_CONFIG
 
         self._previous_target_distance = None
         self._previous_action = None
         self._episode_distance_covered = None
         self._success_distance = self._core_env_config.TASK.SUCCESS_DISTANCE
 
+        self._with_collision_reward = self._rl_config.COLLISION_REWARD_ENABLED
+        self._collision_reward = self._rl_config.COLLISION_REWARD
+        self._collision_distance = self._rl_config.COLLISION_DISTANCE
+
+        self._no_op = self._rl_config.NO_OPERATION
+
+        width = task.SIMULATOR.DEPTH_SENSOR.WIDTH
+        block_w = int(self._rl_config.DEPTH_BLOCK_VIEW_FACTOR * width)
+        self._depth_lim = [width//2 - block_w, width//2 + block_w]
+        self._depth_min_unblock = self._rl_config.DEPTH_BLOCK_MIN_UNBLOCK
+
+        self._prev_collision = False
+
     def reset(self):
         self._previous_action = None
+        self._prev_collision = False
 
         observations = super().reset()
 
@@ -53,9 +67,69 @@ class NavRLEnv(AugmentEnv):
         ]
         return observations
 
+    def unblocked(self, action):
+        lim = self._depth_lim
+        min_depth = self._depth_min_unblock
+        obs = self._env.sim.get_observations_at()
+        obs.update(
+            self._env.task.sensor_suite.get_observations(
+                observations=obs,
+                episode=self._env.current_episode,
+                action=action,
+                task=self._env.task,
+            )
+        )
+
+        depth = obs["depth"]
+
+        zone = depth[:, lim[0]: lim[1]]
+
+        if zone.min() > min_depth:
+            return True, None
+
+        super_get_obs = getattr(super(), "_process_obs", None)
+        if super_get_obs is not None:
+            obs = super_get_obs(obs)
+
+        return False, obs
+
     def step(self, *args, **kwargs):
         self._previous_action = kwargs["action"]
-        return super().step(*args, **kwargs)
+        skip_new_obs = False
+
+        # TODO fix hardcoded 0 action <-> forward
+        act = kwargs["action"]["action"]
+
+        if self._no_op and self._prev_collision and act == 0:
+            unlock, observation = self.unblocked(kwargs["action"])
+
+            if not unlock:
+                # TODO might be an augmentated collision
+                reward = self.get_reward(observation)
+                done = self.get_done(observation)
+                info = self.get_info(observation)
+                skip_new_obs = True
+            else:
+                self._prev_collision = False
+
+        if not skip_new_obs:
+            observation, reward, done, info = super().step(*args, **kwargs)
+
+        # Do not have proximity in sensors but in info
+        if self._with_collision_reward:
+            collision = False
+            if self._collision_distance <= 0:
+                if info["collisions"]["is_collision"]:
+                    collision = True
+            else:
+                if observation["proximity"][0] < self._collision_distance:
+                    collision = True
+
+            if collision:
+                reward += self._collision_reward
+                self._prev_collision = True
+
+        return observation, reward, done, info
 
     def get_reward_range(self):
         return (

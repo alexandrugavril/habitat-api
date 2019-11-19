@@ -8,10 +8,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+from habitat_baselines.rl.ppo import PPO
 EPS_PPO = 1e-5
 
 
-class PPO(nn.Module):
+class AuxPPO(PPO):
     def __init__(
         self,
         actor_critic,
@@ -20,47 +21,35 @@ class PPO(nn.Module):
         num_mini_batch,
         value_loss_coef,
         entropy_coef,
+        action_loss_coef,
         lr=None,
         eps=None,
         max_grad_norm=None,
         use_clipped_value_loss=True,
         use_normalized_advantage=True,
     ):
+        super().__init__(actor_critic,
+            clip_param,
+            ppo_epoch,
+            num_mini_batch,
+            value_loss_coef,
+            entropy_coef,
+            lr=lr,
+            eps=eps,
+            max_grad_norm=max_grad_norm,
+            use_clipped_value_loss=use_clipped_value_loss,
+            use_normalized_advantage=use_normalized_advantage)
 
-        super().__init__()
-
-        self.actor_critic = actor_critic
-
-        self.clip_param = clip_param
-        self.ppo_epoch = ppo_epoch
-        self.num_mini_batch = num_mini_batch
-
-        self.value_loss_coef = value_loss_coef
-        self.entropy_coef = entropy_coef
-
-        self.max_grad_norm = max_grad_norm
-        self.use_clipped_value_loss = use_clipped_value_loss
-
-        self.optimizer = optim.Adam(actor_critic.parameters(), lr=lr, eps=eps)
-        self.device = next(actor_critic.parameters()).device
-        self.use_normalized_advantage = use_normalized_advantage
-
-    def forward(self, *x):
-        raise NotImplementedError
-
-    def get_advantages(self, rollouts):
-        advantages = rollouts.returns[:-1] - rollouts.value_preds[:-1]
-        if not self.use_normalized_advantage:
-            return advantages
-
-        return (advantages - advantages.mean()) / (advantages.std() + EPS_PPO)
+        self.action_loss_coef = action_loss_coef
 
     def update(self, rollouts):
         advantages = self.get_advantages(rollouts)
+        aux_models = self.actor_critic.net.aux_models
 
         value_loss_epoch = 0
         action_loss_epoch = 0
         dist_entropy_epoch = 0
+        other_losses = dict({k: 0 for k in aux_models.keys()})
 
         for e in range(self.ppo_epoch):
             data_generator = rollouts.recurrent_generator(
@@ -125,9 +114,21 @@ class PPO(nn.Module):
                 self.optimizer.zero_grad()
                 total_loss = (
                     value_loss * self.value_loss_coef
-                    + action_loss
+                    + action_loss * self.action_loss_coef
                     - dist_entropy * self.entropy_coef
                 )
+
+                for k, v in aux_out.items():
+                    loss = aux_models[k].calc_loss(
+                        v,
+                        obs_batch,
+                        recurrent_hidden_states_batch,
+                        prev_actions_batch,
+                        masks_batch,
+                        actions_batch
+                    )
+                    total_loss += loss
+                    other_losses[k] += loss.item()
 
                 self.before_backward(total_loss)
                 total_loss.backward()
@@ -146,19 +147,8 @@ class PPO(nn.Module):
         value_loss_epoch /= num_updates
         action_loss_epoch /= num_updates
         dist_entropy_epoch /= num_updates
+        for k, v in other_losses.items():
+            other_losses[k] = v / num_updates
 
-        return value_loss_epoch, action_loss_epoch, dist_entropy_epoch
-
-    def before_backward(self, loss):
-        pass
-
-    def after_backward(self, loss):
-        pass
-
-    def before_step(self):
-        nn.utils.clip_grad_norm_(
-            self.actor_critic.parameters(), self.max_grad_norm
-        )
-
-    def after_step(self):
-        pass
+        return value_loss_epoch, action_loss_epoch, dist_entropy_epoch, \
+               other_losses

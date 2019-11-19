@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any, List, Optional
 
 import numpy as np
+import torch
 from gym import Space, spaces
 
 import habitat_sim
@@ -41,6 +42,10 @@ def check_sim_obs(obs, sensor):
         "Observation corresponding to {} not present in "
         "simulator's observations".format(sensor.uuid)
     )
+    if isinstance(obs, np.ndarray):
+        obs = torch.from_numpy(obs)
+
+    return obs
 
 
 @registry.register_sensor
@@ -49,22 +54,43 @@ class HabitatSimRGBSensor(RGBSensor):
 
     def __init__(self, config):
         self.sim_sensor_type = habitat_sim.SensorType.COLOR
+        self.batch = config.BATCH
+
         super().__init__(config=config)
+        self.h = self.config.HEIGHT
+        self.w = self.config.WIDTH
+        hh = self.h//2
+        hw = self.w//2
+        self.lim = [hw-hh, hh+hw]
+        self.rand_gen = np.random.RandomState(10)
+        self.max_rand = config.V_OFFSET_NOISE
+        self.steps_noise = config.V_OFFSET_NUM_STEPS
+        self._step_cnt = 0
+        self._prev_offset = 0
 
     def _get_observation_space(self, *args: Any, **kwargs: Any):
         return spaces.Box(
             low=0,
             high=255,
-            shape=(self.config.HEIGHT, self.config.WIDTH, RGBSENSOR_DIMENSION),
+            shape=(self.config.HEIGHT, self.config.WIDTH, self.batch * 3),
             dtype=np.uint8,
         )
 
     def get_observation(self, sim_obs):
         obs = sim_obs.get(self.uuid, None)
-        check_sim_obs(obs, self)
+        obs = check_sim_obs(obs, self)
 
         # remove alpha channel
         obs = obs[:, :, :RGBSENSOR_DIMENSION]
+        if self.max_rand > 0:
+            if self._step_cnt % self.steps_noise == 0:
+                self._prev_offset = self.rand_gen.randint(self.max_rand)
+            offset = self._prev_offset
+            self._step_cnt += 1
+        else:
+            offset = 0
+        obs = obs[self.lim[0]+offset:self.lim[1]+offset]
+
         return obs
 
 
@@ -76,6 +102,7 @@ class HabitatSimDepthSensor(DepthSensor):
 
     def __init__(self, config):
         self.sim_sensor_type = habitat_sim.SensorType.DEPTH
+        self.batch = config.BATCH
 
         if config.NORMALIZE_DEPTH:
             self.min_depth_value = 0
@@ -84,19 +111,30 @@ class HabitatSimDepthSensor(DepthSensor):
             self.min_depth_value = config.MIN_DEPTH
             self.max_depth_value = config.MAX_DEPTH
 
+        self.h = config.HEIGHT
+        self.w = config.WIDTH
+        hh = self.h//2
+        hw = self.w//2
+        self.lim = [hw-hh, hh+hw]
+        self.rand_gen = np.random.RandomState(10)
+        self.max_rand = config.V_OFFSET_NOISE
+        self.steps_noise = config.V_OFFSET_NUM_STEPS
+        self._step_cnt = 0
+        self._prev_offset = 0
+
         super().__init__(config=config)
 
     def _get_observation_space(self, *args: Any, **kwargs: Any):
         return spaces.Box(
             low=self.min_depth_value,
             high=self.max_depth_value,
-            shape=(self.config.HEIGHT, self.config.WIDTH, 1),
+            shape=(self.config.HEIGHT, self.config.WIDTH, self.batch),
             dtype=np.float32,
         )
 
     def get_observation(self, sim_obs):
         obs = sim_obs.get(self.uuid, None)
-        check_sim_obs(obs, self)
+        obs = check_sim_obs(obs, self)
 
         if isinstance(obs, np.ndarray):
             obs = np.clip(obs, self.config.MIN_DEPTH, self.config.MAX_DEPTH)
@@ -113,6 +151,53 @@ class HabitatSimDepthSensor(DepthSensor):
             # normalize depth observation to [0, 1]
             obs = (obs - self.config.MIN_DEPTH) / self.config.MAX_DEPTH
 
+        if self.max_rand > 0:
+            if self._step_cnt % self.steps_noise == 0:
+                self._prev_offset = self.rand_gen.randint(self.max_rand)
+            offset = self._prev_offset
+            self._step_cnt += 1
+        else:
+            offset = 0
+        obs = obs[self.lim[0]+offset:self.lim[1]+offset]
+        return obs
+
+
+@registry.register_sensor
+class HabitatSimDepthSensor2(HabitatSimDepthSensor):
+    def __init__(self, config):
+        self.sim_sensor_type = habitat_sim.SensorType.DEPTH
+
+        self.h = config.HEIGHT
+        self.w = config.WIDTH
+        h = self.h//2
+        self.lim1 = [0, h*2]
+        self.lim2 = [h, h*3]
+
+        super().__init__(config=config)
+
+    def _get_uuid(self, *args: Any, **kwargs: Any) -> str:
+        return "depth2"
+
+    def get_observation(self, sim_obs):
+        obs = sim_obs.get(self.uuid, None)
+        obs = check_sim_obs(obs, self)
+
+        if isinstance(obs, np.ndarray):
+            obs = np.clip(obs, self.config.MIN_DEPTH, self.config.MAX_DEPTH)
+
+            obs = np.expand_dims(
+                obs, axis=2
+            )  # make depth observation a 3D array
+        else:
+            obs = obs.clamp(self.config.MIN_DEPTH, self.config.MAX_DEPTH)
+
+            obs = obs.unsqueeze(-1)
+
+        if self.config.NORMALIZE_DEPTH:
+            # normalize depth observation to [0, 1]
+            obs = (obs - self.config.MIN_DEPTH) / self.config.MAX_DEPTH
+
+        obs = obs[self.lim1[0]:self.lim1[1], self.lim2[0]:self.lim2[1]]
         return obs
 
 
@@ -134,7 +219,7 @@ class HabitatSimSemanticSensor(SemanticSensor):
 
     def get_observation(self, sim_obs):
         obs = sim_obs.get(self.uuid, None)
-        check_sim_obs(obs, self)
+        obs = check_sim_obs(obs, self)
         return obs
 
 
@@ -186,9 +271,18 @@ class HabitatSim(Simulator):
         for sensor in _sensor_suite.sensors.values():
             sim_sensor_cfg = habitat_sim.SensorSpec()
             sim_sensor_cfg.uuid = sensor.uuid
-            sim_sensor_cfg.resolution = list(
-                sensor.observation_space.shape[:2]
+            # sim_sensor_cfg.resolution = list(
+            #     sensor.observation_space.shape[:2]
+            # )
+            if sim_sensor_cfg.uuid == "depth2":
+                scale = 2
+            else:
+                scale = 1
+            sim_sensor_cfg.resolution = list([
+                sensor.observation_space.shape[1] * scale,
+                sensor.observation_space.shape[1] * scale]
             )
+
             sim_sensor_cfg.parameters["hfov"] = str(sensor.config.HFOV)
             sim_sensor_cfg.position = sensor.config.POSITION
             # TODO(maksymets): Add configure method to Sensor API to avoid

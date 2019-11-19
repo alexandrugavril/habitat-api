@@ -36,7 +36,7 @@ class Policy(nn.Module):
         masks,
         deterministic=False,
     ):
-        features, rnn_hidden_states = self.net(
+        features, rnn_hidden_states, aux_out = self.net(
             observations, rnn_hidden_states, prev_actions, masks
         )
         distribution = self.action_distribution(features)
@@ -49,10 +49,10 @@ class Policy(nn.Module):
 
         action_log_probs = distribution.log_probs(action)
 
-        return value, action, action_log_probs, rnn_hidden_states
+        return value, action, action_log_probs, rnn_hidden_states, aux_out
 
     def get_value(self, observations, rnn_hidden_states, prev_actions, masks):
-        features, _ = self.net(
+        features, _, aux_out = self.net(
             observations, rnn_hidden_states, prev_actions, masks
         )
         return self.critic(features)
@@ -60,7 +60,7 @@ class Policy(nn.Module):
     def evaluate_actions(
         self, observations, rnn_hidden_states, prev_actions, masks, action
     ):
-        features, rnn_hidden_states = self.net(
+        features, rnn_hidden_states, aux_out = self.net(
             observations, rnn_hidden_states, prev_actions, masks
         )
         distribution = self.action_distribution(features)
@@ -69,7 +69,8 @@ class Policy(nn.Module):
         action_log_probs = distribution.log_probs(action)
         distribution_entropy = distribution.entropy().mean()
 
-        return value, action_log_probs, distribution_entropy, rnn_hidden_states
+        return value, action_log_probs, distribution_entropy, \
+               rnn_hidden_states, aux_out
 
 
 class CriticHead(nn.Module):
@@ -170,4 +171,4 @@ class PointNavBaselineNet(Net):
         x = torch.cat(x, dim=1)
         x, rnn_hidden_states = self.state_encoder(x, rnn_hidden_states, masks)
 
-        return x, rnn_hidden_states
+        return x, rnn_hidden_states, dict()
