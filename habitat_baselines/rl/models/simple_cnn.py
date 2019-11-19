@@ -68,6 +68,7 @@ class SimpleCNN(nn.Module):
                     kernel_size=self._cnn_layers_kernel_size[0],
                     stride=self._cnn_layers_stride[0],
                 ),
+                nn.Dropout2d(p=self._drop_prob),
                 nn.ReLU(True),
                 nn.Conv2d(
                     in_channels=32 * ds,
@@ -83,7 +84,7 @@ class SimpleCNN(nn.Module):
                     kernel_size=self._cnn_layers_kernel_size[2],
                     stride=self._cnn_layers_stride[2],
                 ),
-                # nn.ReLU(True),
+                #  nn.ReLU(True),
                 Flatten(),
                 nn.Linear(32 * ds * cnn_dims[0] * cnn_dims[1], output_size),
                 nn.ReLU(True),
