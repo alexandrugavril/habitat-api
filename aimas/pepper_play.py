@@ -9,8 +9,7 @@ depth_buffer = []
 forward_step = 0.25
 turn_step = 0.1
 
-cfg = get_config(config_paths=['./results/2019-11-05_20-19-38_new_param_noise/'
-                               'ppo_explore_GO_replica.yaml'])
+cfg = get_config()
 print(cfg)
 pepper_env = PepperPlaybackEnv(cfg)
 
@@ -21,13 +20,16 @@ while key != ord('q'):
 
     rgb = observations['rgb']
     depth = observations['depth']
-    pose = info['position']
-    action = info['action']
+    pose = observations['position']
+    rot = observations['rotation']
+    action = observations['action']
+    sonar = observations['sonar']
 
     cv2.imshow("RGB", rgb)
     cv2.imshow("Depth", depth)
-    print(pose)
+    print('-'*100)
     print(action)
+    print(observations['rel_position'])
     key = cv2.waitKey(0)
     if done:
         break

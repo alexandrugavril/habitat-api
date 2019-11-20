@@ -14,7 +14,21 @@ from habitat import Config, Env
 from habitat.core.dataset import Dataset, Episode
 
 from habitat_baselines.common.baseline_registry import baseline_registry
+import math
 
+
+def quaternion_to_euler(x, y, z, w):
+    t0 = +2.0 * (w * x + y * z)
+    t1 = +1.0 - 2.0 * (x * x + y * y)
+    roll = math.atan2(t0, t1)
+    t2 = +2.0 * (w * y - z * x)
+    t2 = +1.0 if t2 > +1.0 else t2
+    t2 = -1.0 if t2 < -1.0 else t2
+    pitch = math.asin(t2)
+    t3 = +2.0 * (w * z + x * y)
+    t4 = +1.0 - 2.0 * (y * y + z * z)
+    yaw = math.atan2(t3, t4)
+    return [yaw, pitch, roll]
 
 def _get_movement_ros_message(fw_step, r_step):
     frame_id = 'base_footprint'
@@ -55,6 +69,7 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         self._norm_depth = sim_config.DEPTH_SENSOR.NORMALIZE_DEPTH
 
         self.goal_sensor_uuid = config.TASK_CONFIG.TASK.GOAL_SENSOR_UUID
+        print(self.goal_sensor_uuid)
         self._goal_sensor_dim = config.TASK_CONFIG.TASK.\
             POINTGOAL_WITH_GPS_COMPASS_SENSOR.DIMENSIONALITY
 
@@ -62,9 +77,11 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         self._forward_step = self._pepper_config.ForwardStep
         self._turn_step = self._pepper_config.TurnStep
 
+        self._sonar_buffer = []
         self._depth_buffer = []
         self._rgb_buffer = []
         self._pose_buffer = []
+        self._goal_buffer = []
         self._collected_positions = set()
 
         # Subscribe to RGB and Depth topics
@@ -82,7 +99,13 @@ class PepperRLExplorationEnv(habitat.RLEnv):
                                      'geometry_msgs/PoseStamped')
         self._listener_pose = Topic(self._ros,
                                     self._pepper_config.PoseTopic,
+                                    'nav_msgs/Odometry')
+        self._listener_goal = Topic(self._ros,
+                                    self._pepper_config.GoalTopic,
                                     'geometry_msgs/PoseStamped')
+        self._listener_sonar = Topic(self._ros,
+                                     self._pepper_config.SonarTopic,
+                                     'sensor_msgs/Range')
 
         self._listener_rgb.subscribe(lambda message:
                                      self._fetch_rgb(message))
@@ -90,6 +113,10 @@ class PepperRLExplorationEnv(habitat.RLEnv):
                                        self._fetch_depth(message))
         self._listener_pose.subscribe(lambda message:
                                       self._fetch_pose(message))
+        self._listener_goal.subscribe(lambda message:
+                                      self._fetch_goal(message))
+        self._listener_sonar.subscribe(lambda message:
+                                       self._fetch_sonar(message))
 
         self.init_obs_space()
         self.init_action_space()
@@ -159,11 +186,20 @@ class PepperRLExplorationEnv(habitat.RLEnv):
     def close(self) -> None:
         self._ros.close()
 
+    def _fetch_goal(self, message):
+        self._goal_buffer.append(message)
+
     def _fetch_pose(self, message):
         self._pose_buffer.append(message)
         if self._buffer_size != -1:
             if len(self._pose_buffer) > self._buffer_size:
                 self._pose_buffer.pop(0)
+
+    def _fetch_sonar(self, message):
+        self._sonar_buffer.append(message)
+        if self._buffer_size != -1:
+            if len(self._sonar_buffer) > self._buffer_size:
+                self._sonar_buffer.pop(0)
 
     def _fetch_rgb(self, message):
         img = np.frombuffer(base64.b64decode(message['data']), np.uint8)
@@ -224,9 +260,31 @@ class PepperRLExplorationEnv(habitat.RLEnv):
             cv2.imshow("Depth", depth)
             cv2.waitKey(1)
 
+        robot_position, robot_rotation = self.get_position()
+        goal_position = self.get_goal()
+
+        print("=" * 100)
+        print("PEPPER_POS:", robot_position)
+        print("PEPPER ROT:", robot_rotation)
+        print("GOAL POS:", goal_position)
+
+        dist = np.linalg.norm(robot_position - goal_position)
+        inc_y = goal_position[1] - robot_position[1]
+        inc_x = goal_position[0] - robot_position[0]
+        angle_between_robot_and_goal = math.atan2(inc_y, inc_x)
+
+        print("ANGLE BETWEEN ROBOT AND GOAL:", angle_between_robot_and_goal)
+
+        angle = robot_rotation[0] - angle_between_robot_and_goal
+
+        angle = -1 * angle
+
+        print(dist, angle)
+
         return {
             "rgb": rgb,
-            "depth": depth
+            "depth": depth,
+            "pointgoal_with_gps_compass": [dist, angle]
         }
 
     def reset(self):
@@ -236,8 +294,12 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         self._collected_positions = set()
         self._depth_buffer = []
         self._rgb_buffer = []
+        observations = self.get_obs()
+        reward = self.get_reward(observations)
+        done = self.get_done(observations)
+        info = self.get_info(observations)
 
-        return observations
+        return observations, reward, done, info
 
     def step(self, *args, **kwargs):
         self._previous_action = kwargs["action"]
@@ -256,19 +318,36 @@ class PepperRLExplorationEnv(habitat.RLEnv):
             1,
         )
 
+    def get_goal(self):
+        if len(self._goal_buffer) == 0:
+            return np.array([0, 0, 0])
+        else:
+            position = self._goal_buffer[-1]['pose']['position']
+            c_pos = np.array([position['x'], position['y'], position['z']])
+            return c_pos
+
+    def get_sonar(self):
+        if len(self._sonar_buffer) == 0:
+            return -1
+        else:
+            sonar = self._sonar_buffer[-1]['range']
+            return sonar
+
+
     def get_position(self):
         if len(self._pose_buffer) == 0:
-            return (0, 0, 0), (0, 0, 0, 1)
+            return np.array([0, 0, 0]), np.array([0, 0, 0])
         else:
-            position = self._pose_buffer[-1]['pose']['position']
-            rotation = self._pose_buffer[-1]['pose']['orientation']
+            position = self._pose_buffer[-1]['pose']['pose']['position']
+            rotation = self._pose_buffer[-1]['pose']['pose']['orientation']
 
-            c_pos = position['x'], position['y'], position['z']
-            c_rot = rotation['x'], rotation['y'], rotation['z'], rotation['w']
+            c_pos = np.array([position['x'], position['y'], position['z']])
+            c_rot = np.array(quaternion_to_euler(rotation['x'], rotation['y'],
+                     rotation['z'], rotation['w']))
             return c_pos, c_rot
 
     def get_reward(self, observations):
-        (x, y, z), (x, y, z, w) = self.get_position()
+        #(x, y, z), (x, y, z, w) = self.get_position()
         reward = 0
         return reward
 
