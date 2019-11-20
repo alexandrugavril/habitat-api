@@ -35,6 +35,7 @@ _C.NUM_PROCESSES = 16
 _C.SENSORS = ["RGB_SENSOR", "DEPTH_SENSOR"]
 _C.CHECKPOINT_FOLDER = "data/checkpoints"
 _C.NUM_UPDATES = 5000
+_C.HARD_NUM_UPDATES = 1000000
 _C.LOG_INTERVAL = 10
 _C.LOG_FILE = "train.log"
 _C.CHECKPOINT_INTERVAL = 50
@@ -135,6 +136,8 @@ _C.RL.PPO.actor_critic.ActionPrediction.target = ""
 _C.RL.PPO.actor_critic.SonarPredictor = CN()
 _C.RL.PPO.actor_critic.SonarPredictor.name = "sonar"
 _C.RL.PPO.actor_critic.SonarPredictor.out_size = 1
+_C.RL.PPO.actor_critic.SonarPredictor.min_sonar = 0.25
+_C.RL.PPO.actor_critic.SonarPredictor.max_mask = 2.8
 _C.RL.PPO.actor_critic.SonarPredictor.loss_coeff = 1.
 _C.RL.PPO.actor_critic.SonarPredictor.target = "depth2"
 

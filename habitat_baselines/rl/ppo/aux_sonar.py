@@ -12,6 +12,9 @@ class SonarPredictor(nn.Module):
         self.loss_coeff = cfg.loss_coeff
         self.target = cfg.target
 
+        self.min_sonar = cfg.min_sonar
+        self.max_sonar = cfg.max_sonar
+
         self.net = nn.Sequential(
             nn.Linear(rnn_size, rnn_size),
             nn.ReLU(inplace=True),
@@ -29,7 +32,10 @@ class SonarPredictor(nn.Module):
                   prev_actions_batch, masks_batch, actions_batch):
 
         target = obs_batch[self.target]
-        target = target.flatten(1).min(dim=1).values.unsqueeze(1)
+        target = target.flatten(1)
+        target[target == 0] = self.max_sonar
+        target = target.clamp(self.min_sonar, self.max_sonar)
+        target = target.min(dim=1).values.unsqueeze(1)
         loss = self.criterion(x, target)
         return self.loss_coeff * loss
 

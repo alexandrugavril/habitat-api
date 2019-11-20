@@ -27,6 +27,13 @@ class AugmentEnv(habitat.RLEnv):
         self._multi_batch_rgb = collections.deque(maxlen=self.batch_input)
         self._multi_batch_depth = collections.deque(maxlen=self.batch_input)
 
+        self._fixed_distribution = config.RL.PPO.actor_critic.fixed_distribution
+        self._prev_action = None
+        self._explore_heuristic = len(self._fixed_distribution) > 0
+        self._prev_obs = None
+        self._fwd_steps = 0
+        self._select_rotate = np.random.choice([1, 2])
+
     def _process_obs(self, obs):
 
         if self._eval_mode:
@@ -88,6 +95,8 @@ class AugmentEnv(habitat.RLEnv):
         return rgb
 
     def reset(self):
+        self._prev_action = None
+        self._select_rotate = np.random.choice([1, 2])
 
         observations = super().reset()
 
@@ -101,12 +110,43 @@ class AugmentEnv(habitat.RLEnv):
                 [depth] * self.batch_input, maxlen=self.batch_input)
 
         observations = self._process_obs(observations)
+        self._prev_obs = observations
 
         return observations
 
     def step(self, *args, **kwargs):
+        if self._explore_heuristic:
+            sonar = self._prev_obs["depth2"]
+            nonzero = sonar != 0
+
+            if nonzero.any():
+                sonar = sonar[sonar != 0].min()
+            else:
+                sonar = 2.8
+
+            movement = self._prev_obs["gps_compass"][:2]
+            movement = np.linalg.norm(movement)
+
+            if sonar <= 0.3 or (self._prev_action == 0 and movement < 0.15):
+                kwargs["action"]["action"] = self._select_rotate
+            else:
+                print(self._fixed_distribution)
+                kwargs["action"]["action"] = np.random.choice(
+                    [0, 1, 2], p=self._fixed_distribution)
+
+            if kwargs["action"]["action"] == 0:
+                self._fwd_steps += 1
+                if self._fwd_steps % 3 == 0:
+                    self._select_rotate = np.random.choice([1, 2])
+            else:
+                self._fwd_steps = 0
 
         observation, reward, done, info = super().step(*args, **kwargs)
+        self._prev_obs = observation
         observation = self._process_obs(observation)
+
+        self._prev_action = kwargs["action"]["action"]
+        if self._explore_heuristic:
+            observation["action"] = self._prev_action
 
         return observation, reward, done, info
