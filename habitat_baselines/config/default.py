@@ -101,17 +101,15 @@ _C.DETECTOR.out_size = 32
 # -----------------------------------------------------------------------------
 _C.PEPPER = CN()
 _C.PEPPER.BufferSize = 10
-_C.PEPPER.ForwardStep = 0.25
-_C.PEPPER.TurnStep = 0.08725
+_C.PEPPER.ForwardStep = 0.1
+_C.PEPPER.TurnStep = 0.15
 _C.PEPPER.RGBTopic = "/pepper_robot/naoqi_driver/camera/front/image_raw"
 _C.PEPPER.DepthTopic = "/pepper_robot/naoqi_driver/camera/depth/image_raw"
 _C.PEPPER.MoveTopic = "/move_base_simple/goal"
 _C.PEPPER.PoseTopic = "/slam_out_pose"
-_C.PEPPER.GoalTopic = "/clicked_point"
-_C.PEPPER.SonarTopic = "/pepper_robot/naoqi_driver/sonar/front"
-
 _C.PEPPER.DisplayImages = False
-_C.PEPPER.EpisodePath = "19.11.2019 11:46:14pepper_save.p"
+
+_C.PEPPER.EpisodePath = "./pepper_save.p"
 
 # -----------------------------------------------------------------------------
 # PROXIMAL POLICY OPTIMIZATION (PPO)
@@ -139,7 +137,7 @@ _C.RL.PPO.actor_critic.SonarPredictor = CN()
 _C.RL.PPO.actor_critic.SonarPredictor.name = "sonar"
 _C.RL.PPO.actor_critic.SonarPredictor.out_size = 1
 _C.RL.PPO.actor_critic.SonarPredictor.min_sonar = 0.25
-_C.RL.PPO.actor_critic.SonarPredictor.max_mask = 2.8
+_C.RL.PPO.actor_critic.SonarPredictor.max_sonar = 2.8
 _C.RL.PPO.actor_critic.SonarPredictor.loss_coeff = 1.
 _C.RL.PPO.actor_critic.SonarPredictor.target = "depth2"
 
