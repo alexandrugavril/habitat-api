@@ -130,7 +130,6 @@ class AugmentEnv(habitat.RLEnv):
             if sonar <= 0.3 or (self._prev_action == 0 and movement < 0.15):
                 kwargs["action"]["action"] = self._select_rotate
             else:
-                print(self._fixed_distribution)
                 kwargs["action"]["action"] = np.random.choice(
                     [0, 1, 2], p=self._fixed_distribution)
 
