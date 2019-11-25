@@ -11,16 +11,7 @@ from habitat_baselines.common.utils import FixedDistributionNet
 from habitat_baselines.rl.models.rnn_state_encoder import RNNStateEncoder
 from habitat_baselines.rl.ppo.policy import Policy, Net
 from habitat_baselines.rl.ppo import VISUAL_ENCODER_MODELS
-
-from habitat_baselines.rl.ppo.aux_relative_position import RelativePositionPredictor
-from habitat_baselines.rl.ppo.aux_sonar import SonarPredictor
-from habitat_baselines.rl.ppo.aux_action import ActionPrediction
-
-AUX_CLASSES = dict({
-    "rel_pos": RelativePositionPredictor,
-    "sonar": SonarPredictor,
-    "action": ActionPrediction,
-})
+from habitat_baselines.rl.ppo import AUX_CLASSES
 
 
 class ExploreNavBaselinePolicyAux(Policy):
