@@ -445,6 +445,65 @@ class EpisodicGPSCompassSensor(HeadingSensor):
         return np.concatenate([pos, relative_heading])
 
 
+@registry.register_sensor(name="GPSCompassStartSensor")
+class EpisodicGPSCompassStartSensor(HeadingSensor):
+    def __init__(
+        self, sim: Simulator, config: Config, *args: Any, **kwargs: Any
+    ):
+        self._sim = sim
+
+        self._dimensionality = getattr(config, "DIMENSIONALITY", 2)
+        assert self._dimensionality in [3, 4]
+        self._prev_pos = None
+        self._prev_heading = None
+        self._prev_rotation = None
+        super().__init__(sim=sim, config=config, *args, **kwargs)
+
+    def _get_uuid(self, *args: Any, **kwargs: Any):
+        return "gps_compass_start"
+
+    def _get_sensor_type(self, *args: Any, **kwargs: Any):
+        return SensorTypes.POSITION
+
+    def _get_observation_space(self, *args: Any, **kwargs: Any):
+        sensor_shape = (self._dimensionality,)
+        return spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=sensor_shape,
+            dtype=np.float32,
+        )
+
+    def get_observation(
+        self, *args: Any, observations, episode, **kwargs: Any
+    ):
+        agent_state = self._sim.get_agent_state()
+
+        origin = np.array(episode.start_position, dtype=np.float32)
+        rotation_world_start = quaternion_from_coeff(episode.start_rotation)
+
+        agent_position = agent_state.position
+
+        agent_position = quaternion_rotate_vector(
+            rotation_world_start.inverse(), agent_position - origin
+        )
+        if self._dimensionality == 3:
+            rel_start_pos = np.array(
+                [-agent_position[2], agent_position[0]], dtype=np.float32
+            )
+        else:
+            rel_start_pos = agent_position.astype(np.float32)
+
+        rotation_world_agent = agent_state.rotation
+        rotation_world_start = quaternion_from_coeff(episode.start_rotation)
+
+        relative_start_heading = np.array([self._quat_to_xy_heading(
+            rotation_world_agent.inverse() * rotation_world_start
+        )])
+
+        return np.concatenate([rel_start_pos, relative_start_heading])
+
+
 @registry.register_sensor
 class ProximitySensor(Sensor):
     r"""Sensor for observing the distance to the closest obstacle
