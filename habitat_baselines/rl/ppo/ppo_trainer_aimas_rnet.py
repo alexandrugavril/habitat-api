@@ -171,7 +171,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         # depth2 = observations[isc]["depth2"].cpu().numpy()
         #
         # # loc
-        # loc = observations[isc]["gps_compass"]
+        # loc = observations[isc]["gps_compass_start"]
         # print("New loc:", loc, actions[isc].item())
         # print("Sonar", depth2.min())
         # prev_pos.append(loc)
@@ -188,11 +188,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         # cv2.imshow("Depth", depth)
         # cv2.imshow("Depth2", depth2)
         #
-        # cv2.waitKey(0)
+        # cv2.waitKey(1)
         # #
-        # #plt.scatter(all_pos[:, 0], all_pos[:, 1])
-        # #plt.show()
-
+        # plt.scatter(all_pos[:, 0], all_pos[:, 1])
+        # plt.show()
+        #
         env_time += time.time() - t_step_env
 
         t_update_stats = time.time()
