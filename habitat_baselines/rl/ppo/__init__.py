@@ -10,10 +10,30 @@ from habitat_baselines.rl.models.simple_cnn import SimpleCNN
 from habitat_baselines.rl.models.simple_cnn_with_resnet import SimpleCNNResnet
 from habitat_baselines.rl.models.simple_cnn_relu import SimpleCNNRelu
 
-__all__ = ["PPO", "Policy", "Net", "PointNavBaselinePolicy"]
+from habitat_baselines.rl.ppo.aux_relative_position import RelativePositionPredictor
+from habitat_baselines.rl.ppo.aux_sonar import SonarPredictor
+from habitat_baselines.rl.ppo.aux_action import ActionPrediction
+from habitat_baselines.rl.ppo.aux_relative_position_start_regression import \
+    RelativeRegressionStartPositionPredictor
+
+from habitat_baselines.rl.ppo.aux_relative_position_start_discrete import \
+    RelativeDiscreteStartPositionPredictor
 
 VISUAL_ENCODER_MODELS = dict({
     "SimpleCNN": SimpleCNN,
     "SimpleCNNRelu": SimpleCNNRelu,
     "SimpleCNNResnet": SimpleCNNResnet,
 })
+
+AUX_CLASSES = dict({
+    "rel_pos": RelativePositionPredictor,
+    "rel_start_pos_reg": RelativeRegressionStartPositionPredictor,
+    "rel_start_pos_d": RelativeDiscreteStartPositionPredictor,
+    "sonar": SonarPredictor,
+    "action": ActionPrediction,
+})
+
+
+__all__ = ["PPO", "Policy", "Net", "PointNavBaselinePolicy",
+           "VISUAL_ENCODER_MODELS", "AUX_CLASSES"]
+
