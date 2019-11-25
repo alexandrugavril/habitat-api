@@ -508,6 +508,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.actor_critic = self.agent.actor_critic
         self.r_policy = self.agent.actor_critic.reachability_policy
 
+        aux_models = self.actor_critic.net.aux_models
+        other_losses = dict({k: 0 for k in aux_models.keys()})
+        total_loss = 0
+
         if config.EVAL_MODE:
             self.agent.eval()
             self.r_policy.eval()
@@ -562,6 +566,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             os.makedirs(self.config.VIDEO_DIR, exist_ok=True)
 
         video_log_int = self.config.VIDEO_OPTION_INTERVAL
+        num_frames = 0
 
         while (
             len(stats_episodes) <= self.config.TEST_EPISODE_COUNT
@@ -570,17 +575,36 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             current_episodes = self.envs.current_episodes()
 
             with torch.no_grad():
+                prev_hidden = test_recurrent_hidden_states
                 _, actions, _, test_recurrent_hidden_states, aux_out \
                     = self.actor_critic.act(
                     batch,
                     test_recurrent_hidden_states,
                     prev_actions,
                     not_done_masks,
-                    deterministic=False,
+                    deterministic=False
                 )
 
                 prev_actions.copy_(actions)
 
+                if 'action' in batch:
+                    prev_actions = torch.tensor([[batch['action']]],
+                                           dtype=torch.long,
+                                           device=actions.device)
+
+                for k, v in aux_out.items():
+                    loss = aux_models[k].calc_loss(
+                        v,
+                        batch,
+                        prev_hidden,
+                        prev_actions,
+                        not_done_masks,
+                        actions
+                    )
+                    total_loss += loss
+                    other_losses[k] += loss.item()
+
+            num_frames += 1
             outputs = self.envs.step([a[0].item() for a in actions])
 
             observations, rewards, dones, infos = [
@@ -717,6 +741,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         episode_map_seen = aggregated_stats["map_seen"] / num_episodes
         episode_metric_mean = aggregated_stats[self.metric_uuid] / num_episodes
         episode_success_mean = aggregated_stats["success"] / num_episodes
+
+        # for k, v in other_losses.items():
+        #     print(k, v / num_frames)
 
         logger.info(f"Average episode reward: {episode_reward_mean:.6f}")
         logger.info(f"Average episode reward GO: {episode_go_reward_mean:.6f}")
