@@ -154,18 +154,26 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         pth_time += time.time() - t_sample_action
 
         t_step_env = time.time()
+        send_actions = [a[0].item() for a in actions]
 
-        outputs = self.envs.step([a[0].item() for a in actions])
+        outputs = self.envs.step(send_actions)
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 
+        # Check if env modified actions
+        if "action" in observations[0]:
+            for i in range(len(observations)):
+                actions[i] = int(observations[i].pop("action"))
+
+        # #
         # isc = 6
-        # rgb = observations[isc]["rgb"].cpu().numpy()
-        # depth = observations[isc]["depth"].cpu().numpy()
+        # rgb = observations[isc]["rgb"][:, :, -3:].cpu().numpy()
+        # depth = observations[isc]["depth"][:,:, -1].unsqueeze(2).cpu().numpy()
         # depth2 = observations[isc]["depth2"].cpu().numpy()
         #
         # # loc
-        # loc = observations[isc]["gps_compass"]
+        # loc = observations[isc]["gps_compass_start"]
         # print("New loc:", loc, actions[isc].item())
+        # print("Sonar", depth2.min())
         # prev_pos.append(loc)
         # all_pos = np.array(prev_pos)
         #
@@ -180,11 +188,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         # cv2.imshow("Depth", depth)
         # cv2.imshow("Depth2", depth2)
         #
-        # cv2.waitKey(0)
+        # cv2.waitKey(1)
+        # #
+        # plt.scatter(all_pos[:, 0], all_pos[:, 1])
+        # plt.show()
         #
-        # #plt.scatter(all_pos[:, 0], all_pos[:, 1])
-        # #plt.show()
-
         env_time += time.time() - t_step_env
 
         t_update_stats = time.time()
@@ -342,10 +350,12 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             lr_lambda=lambda x: linear_decay(x, self.config.NUM_UPDATES),
         )
 
+        train_steps = min(self.config.NUM_UPDATES,
+                          self.config.HARD_NUM_UPDATES)
         with TensorboardWriter(
             self.config.TENSORBOARD_DIR, flush_secs=self.flush_secs
         ) as writer:
-            for update in range(self.config.NUM_UPDATES):
+            for update in range(train_steps):
                 if ppo_cfg.use_linear_clip_decay:
                     self.agent.clip_param = ppo_cfg.clip_param * linear_decay(
                         update, self.config.NUM_UPDATES

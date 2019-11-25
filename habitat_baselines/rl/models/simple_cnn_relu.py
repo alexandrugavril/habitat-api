@@ -83,7 +83,7 @@ class SimpleCNNRelu(nn.Module):
                     kernel_size=self._cnn_layers_kernel_size[2],
                     stride=self._cnn_layers_stride[2],
                 ),
-                nn.ReLU(True),
+                nn.ELU(True),
                 nn.Dropout(p=self._drop_prob),
                 Flatten(),
                 nn.Linear(32 * ds * cnn_dims[0] * cnn_dims[1], output_size),

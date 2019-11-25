@@ -2,40 +2,41 @@ import torch
 import torch.nn as nn
 
 
-class SonarPredictor(nn.Module):
+class RelativeRegressionStartPositionPredictor(nn.Module):
     def __init__(self, cfg, visual_feat_size, target_encoding_size,
                  rnn_size):
         super().__init__()
 
-        out_size = cfg.out_size
+        without_rotation = 1
+        self.out_size = out_size = cfg.out_size - without_rotation
 
         self.loss_coeff = cfg.loss_coeff
         self.target = cfg.target
-
-        self.min_sonar = cfg.min_sonar
-        self.max_sonar = cfg.max_sonar
+        self.max_value = cfg.max_value
+        # self.discrete = cfg.discrete
 
         self.net = nn.Sequential(
             nn.Linear(rnn_size, rnn_size),
-            nn.ReLU(inplace=True),
+            nn.LeakyReLU(inplace=True),
             nn.Linear(rnn_size, out_size),
         )
 
         self.criterion = nn.MSELoss()
 
-    def forward(self, observations, prev_actions, masks, perception_embed,
-                target_encoding, rnn_out):
+    def forward(self, observations, prev_actions, masks,
+                perception_embed, target_encoding, rnn_out):
+
         x = self.net(rnn_out)
+
         return x
 
     def calc_loss(self, x, obs_batch, recurrent_hidden_states_batch,
                   prev_actions_batch, masks_batch, actions_batch):
 
         target = obs_batch[self.target]
-        target = target.flatten(1)
-        target[target == 0] = self.max_sonar
-        target = target.clamp(self.min_sonar, self.max_sonar)
-        target = target.min(dim=1).values.unsqueeze(1)
+        target = target[:, :self.out_size]
+        target = target / self.max_value
+
         loss = self.criterion(x, target)
         return self.loss_coeff * loss
 
