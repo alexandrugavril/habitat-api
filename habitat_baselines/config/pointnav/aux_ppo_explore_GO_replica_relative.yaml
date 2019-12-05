@@ -10,7 +10,7 @@ VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
 EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
 CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
 LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
-TEST_EPISODE_COUNT: 12
+TEST_EPISODE_COUNT: 36
 NUM_PROCESSES: 12  # Lets move to 12 number of envs
 SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR", "DEPTH2_SENSOR"]
 NUM_UPDATES: 5000 # So as to train on 15 Mil frames
@@ -19,7 +19,7 @@ LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
 COMMIT: "{commit_hash}"
 
-BATCH_INPUT: &batch 2
+BATCH_INPUT: &batch 3
 
 TRANSFORM_RGB:
   ENABLED: False # ___AUG____
@@ -33,9 +33,10 @@ TRANSFORM_DEPTH:
 TASK_CONFIG:
   TASK:
     SUCCESS_IF_IN_VIEW: False
-    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR', 'GPS_COMPASS_SENSOR']
-    WITH_TARGET_ENCODING: False
-    GOAL_SENSOR_UUID: pointgoal_with_gps_compass
+    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR', 'GPS_COMPASS_SENSOR',
+              'GPS_COMPASS_START_SENSOR', "EMPTY_SENSOR"]
+    WITH_TARGET_ENCODING: True
+    GOAL_SENSOR_UUID: empty_sensor
     POSSIBLE_ACTIONS: ['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT']
 #    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
   SIMULATOR:
@@ -52,6 +53,7 @@ TASK_CONFIG:
       V_OFFSET_NUM_STEPS: 100
 
   ENVIRONMENT:
+    MAX_EPISODE_STEPS: 500
     ITERATOR_OPTIONS:
       GROUP_BY_SCENE: False
       SHUFFLE: True
@@ -74,10 +76,14 @@ RL:
       num_recurrent_layers: 1
       rnn_type: "GRU"
       fixed_distribution: [0.8, 0.1, 0.1]
-      type: "ExploreNavBaselinePolicyAux"
-      aux: ["rel_pos", "sonar", "action"]
+      type: "ExploreNavBaselinePolicyAuxRecurrentin" #"ExploreNavBaselinePolicyAux"
+      aux: ["rel_pos", "action", "rel_start_pos_reg"] # "sonar",]
+      map_aux_to_obs: [["rel_start_pos_reg", "empty_sensor"]]
       SonarPredictor:
         loss_coeff: 1.
+      RelativeRegressionStartPositionPredictor:
+        max_value: 1.
+
     visual_encoder: SimpleCNN
     visual_encoder_dropout: 0.0
     channel_scale: 1

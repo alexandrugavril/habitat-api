@@ -121,6 +121,7 @@ _C.RL.PPO.actor_critic.type = "ExploreNavBaselinePolicy"
 _C.RL.PPO.actor_critic.num_recurrent_layers = 1
 _C.RL.PPO.actor_critic.rnn_type = "GRU"
 _C.RL.PPO.actor_critic.aux = []
+_C.RL.PPO.actor_critic.map_aux_to_obs = []
 
 _C.RL.PPO.actor_critic.RelativePositionPredictor = CN()
 _C.RL.PPO.actor_critic.RelativePositionPredictor.name = "rel_pos"
@@ -134,13 +135,6 @@ _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.out_size = 3
 _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.loss_coeff = 1.
 _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.target = "gps_compass_start"
 _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.max_value = 15.
-
-_C.RL.PPO.actor_critic.RelativeDiscreteStartPositionPredictor = CN()
-_C.RL.PPO.actor_critic.RelativeDiscreteStartPositionPredictor.name = "rel_start_pos_d"
-_C.RL.PPO.actor_critic.RelativeDiscreteStartPositionPredictor.out_size = 3
-_C.RL.PPO.actor_critic.RelativeDiscreteStartPositionPredictor.loss_coeff = 1.
-_C.RL.PPO.actor_critic.RelativeDiscreteStartPositionPredictor.target = "gps_compass_start"
-_C.RL.PPO.actor_critic.RelativeDiscreteStartPositionPredictor.max_value = 15
 
 _C.RL.PPO.actor_critic.ActionPrediction = CN()
 _C.RL.PPO.actor_critic.ActionPrediction.name = "action"

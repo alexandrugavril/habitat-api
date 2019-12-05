@@ -1,30 +1,31 @@
 BASE_TASK_CONFIG_PATH: "configs/tasks/explore_replica.yaml"
 TRAINER_NAME: "ppoAimasReachability"
 ENV_NAME: "NavObjectRLEnv"
-SIMULATOR_GPU_ID: 3
-TORCH_GPU_ID: 3
+SIMULATOR_GPU_ID: 0
+TORCH_GPU_ID: 0
 VIDEO_OPTION: ["disk", "tensorboard"]
+VIDEO_OPTION_INTERVAL: 10
 TENSORBOARD_DIR: "results/{results_prefix}/explore_GO_test/tb"
 VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
 EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
 CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
 LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
-TEST_EPISODE_COUNT: 2
-NUM_PROCESSES: 1  # Lets move to 12 number of envs
+TEST_EPISODE_COUNT: 12
+NUM_PROCESSES: 12  # Lets move to 12 number of envs
 SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"]
 NUM_UPDATES: 5000 # So as to train on 15 Mil frames
-LOG_INTERVAL: 1
+LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
 COMMIT: "{commit_hash}"
 
 TRANSFORM:
-  ENABLED: False
+  ENABLED: True
   min_scale: 1.
   max_scale: 1.2
 TRANSFORM_RGB:
-  ENABLED: False
+  ENABLED: True
 TRANSFORM_DEPTH:
-  ENABLED: False
+  ENABLED: True
   std_noise: 0.2
   depth_min_th: 0.04
   depth_max_th: 0.8
@@ -33,16 +34,30 @@ TRANSFORM_DEPTH:
 TASK_CONFIG:
   TASK:
     SUCCESS_IF_IN_VIEW: False
-    SENSORS: ["SET_GOAL", 'POINTGOAL_WITH_GPS_COMPASS_SENSOR']
+    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR', 'PROXIMITY_SENSOR']
     WITH_TARGET_ENCODING: True
-    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
+    POSSIBLE_ACTIONS: ['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT', "STOP"]
+#    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
   SIMULATOR:
     HABITAT_SIM_V0:
-      GPU_DEVICE_ID: 3
+      GPU_DEVICE_ID: 0
+
+  ENVIRONMENT:
+    ITERATOR_OPTIONS:
+      GROUP_BY_SCENE: False
+      SHUFFLE: True
+    OVERRIDE_RAND_GOAL:
+      ENABLED: True
+      MIN_DIST: 1.
+      RADIUS: 0.2
 RL:
-  SLACK_REWARD: 0. #-0.01
-  COLLISION_REWARD_ENABLED: False
-  SUCCESS_REWARD: 1.
+  NO_OPERATION: True
+  DEPTH_BLOCK_VIEW_FACTOR: 0.15
+  DEPTH_BLOCK_MIN_UNBLOCK: 0.1
+
+  SLACK_REWARD: -0.01
+  COLLISION_REWARD_ENABLED: True
+  SUCCESS_REWARD: 10.
   COLLISION_REWARD: -0.1
   COLLISION_DISTANCE: 0.3
   PPO:
