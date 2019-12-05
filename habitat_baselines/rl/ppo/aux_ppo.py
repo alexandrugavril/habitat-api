@@ -142,6 +142,17 @@ class AuxPPO(PPO):
                 action_loss_epoch += action_loss.item()
                 dist_entropy_epoch += dist_entropy.item()
 
+                # Update observations
+                # Tensors of size tensors to (num_steps * num_envs_per_batch, ...)
+
+                # HACKY update
+                if len(self.actor_critic.map_aux_to_obs) > 0:
+                    aux_out_rel = aux_out["rel_start_pos_reg"].view(256, 3, 2)
+                    obs_view = obs_batch["empty_sensor"].view(256, 3, 2)
+                    obs_view[1:].copy_(aux_out_rel[:-1])
+
+                    obs_batch["empty_sensor"].data *= masks_batch.data
+
         num_updates = self.ppo_epoch * self.num_mini_batch
 
         value_loss_epoch /= num_updates
