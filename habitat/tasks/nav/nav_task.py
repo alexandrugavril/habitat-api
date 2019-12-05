@@ -373,6 +373,38 @@ class EpisodicGPSSensor(Sensor):
             return agent_position.astype(np.float32)
 
 
+@registry.register_sensor(name="EmptySensor")
+class EmptySensor(Sensor):
+    def __init__(
+        self, sim: Simulator, config: Config, *args: Any, **kwargs: Any
+    ):
+        self._sim = sim
+
+        self._dimensionality = getattr(config, "DIMENSIONALITY", 2)
+        super().__init__(config=config)
+
+    def _get_uuid(self, *args: Any, **kwargs: Any):
+        return "empty_sensor"
+
+    def _get_sensor_type(self, *args: Any, **kwargs: Any):
+        return SensorTypes.POSITION
+
+    def _get_observation_space(self, *args: Any, **kwargs: Any):
+        sensor_shape = (self._dimensionality,)
+        return spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=sensor_shape,
+            dtype=np.float32,
+        )
+
+    def get_observation(
+        self, *args: Any, observations, episode, **kwargs: Any
+    ):
+
+        return np.zeros(self._dimensionality)
+
+
 @registry.register_sensor(name="GPSCompassSensor")
 class EpisodicGPSCompassSensor(HeadingSensor):
     def __init__(

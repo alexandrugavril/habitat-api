@@ -1,5 +1,14 @@
 import torch
 import torch.nn as nn
+from torch.nn.functional import cross_entropy
+
+
+class Accuracy(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x, target):
+        return x.max(1)[1] == target
 
 
 class ActionPrediction(nn.Module):
@@ -26,6 +35,9 @@ class ActionPrediction(nn.Module):
         x = self.net(rnn_out)
 
         return x
+
+    def set_per_element_loss(self):
+        self.criterion = Accuracy()
 
     def calc_loss(self, x, obs_batch, recurrent_hidden_states_batch,
                   prev_actions_batch, masks_batch, actions_batch):

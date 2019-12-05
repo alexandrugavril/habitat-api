@@ -9,6 +9,7 @@ import time
 from collections import deque
 from typing import Dict, List
 import cv2
+import matplotlib.pyplot as plt
 
 import numpy as np
 import torch
@@ -27,20 +28,26 @@ from habitat_baselines.common.utils import (
 from habitat import Config, logger
 from habitat_baselines.common.baseline_registry import baseline_registry
 from habitat_baselines.common.utils import (
-    batch_obs,
+    batch_obs_augment_aux,
 )
 from habitat_baselines.rl.ppo.aux_ppo import AuxPPO
 from habitat_baselines.rl.ppo.aimas_reachability_policy import ExploreNavBaselinePolicy
 from habitat_baselines.rl.ppo.aimas_reachability_policy_aux import ExploreNavBaselinePolicyAux
+from habitat_baselines.rl.ppo.aimas_reachability_policy_aux_recurrentin import ExploreNavBaselinePolicyAuxRecurrentin
 from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer
 
 
 from habitat_baselines.rl.ppo.reachability_policy import ReachabilityPolicy
 
 
+np.set_printoptions(edgeitems=30, linewidth=100000,
+    formatter=dict(float=lambda x: "%.3g" % x))
+
+
 ACTOR_CRITICS = dict({
     "ExploreNavBaselinePolicy": ExploreNavBaselinePolicy,
     "ExploreNavBaselinePolicyAux": ExploreNavBaselinePolicyAux,
+    "ExploreNavBaselinePolicyAuxRecurrentin": ExploreNavBaselinePolicyAuxRecurrentin,
 })
 
 
@@ -85,6 +92,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.skip_train_ppo_without_rtrain = \
             cfg.RL.REACHABILITY.skip_train_ppo_without_rtrain
 
+        # Map output of aux prediction from actor critic to next step observation
+        self.map_aux_to_obs = cfg.RL.PPO.actor_critic.map_aux_to_obs
+
         self.actor_critic = ACTOR_CRITICS[cfg.RL.PPO.actor_critic.type](
             cfg=cfg.RL.PPO.actor_critic,
             observation_space=self.envs.observation_spaces[0],
@@ -99,6 +109,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             channel_scale=ppo_cfg.channel_scale,
         )
         self.actor_critic.to(self.device)
+        self.actor_critic.map_aux_to_obs = self.map_aux_to_obs
 
         self.agent = AuxPPO(
             actor_critic=self.actor_critic,
@@ -131,7 +142,6 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         t_sample_action = time.time()
         # sample actions
         prev_pos = self.prev_pos
-        import matplotlib.pyplot as plt
 
         with torch.no_grad():
             step_observation = {
@@ -150,6 +160,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                 rollouts.prev_actions[rollouts.step],
                 rollouts.masks[rollouts.step],
             )
+            # TODO HACK HACK
+            # print("<:><:><:><:><:><:> YOU HAVE A HACKY HACK "* 100)
+            # aux_out["rel_start_pos_reg"] +=
 
         pth_time += time.time() - t_sample_action
 
@@ -197,13 +210,15 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         t_update_stats = time.time()
 
-        batch = batch_obs(observations)
         rewards = torch.tensor(rewards, dtype=torch.float)
         rewards = rewards.unsqueeze(1)
 
         masks = torch.tensor(
             [[0.0] if done else [1.0] for done in dones], dtype=torch.float
         )
+
+        map_values = self._get_mapping(observations, aux_out)
+        batch = batch_obs_augment_aux(observations, map_values=map_values, masks=masks)
 
         current_episode_go_reward += rewards
         episode_go_rewards += (1 - masks) * current_episode_go_reward
@@ -220,6 +235,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         episode_counts += 1 - masks
         current_episode_reward *= masks
 
+
         rollouts.insert(
             batch,
             recurrent_hidden_states,
@@ -233,6 +249,16 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         pth_time += time.time() - t_update_stats
 
         return pth_time, env_time, self.envs.num_envs
+
+    def _get_mapping(self, observations, aux_out):
+        if len(self.map_aux_to_obs) > 0:
+            map_values = dict()
+
+            for aux_name, obs_name in self.map_aux_to_obs:
+                map_values[obs_name] = aux_out[aux_name]
+
+            return map_values
+        return None
 
     def _update_agent(self, ppo_cfg, rollouts):
         t_update_model = time.time()
@@ -318,7 +344,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         rollouts.to(self.device)
 
         observations = self.envs.reset()
-        batch = batch_obs(observations)
+        batch = batch_obs_augment_aux(observations)
 
         for sensor in rollouts.observations:
             if sensor in batch:
@@ -519,6 +545,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.r_policy = self.agent.actor_critic.reachability_policy
 
         aux_models = self.actor_critic.net.aux_models
+
         other_losses = dict({k: torch.zeros(self.envs.num_envs, 1,
                                             device=self.device)
                              for k in aux_models.keys()})
@@ -526,6 +553,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                                                    self.envs.action_spaces[0].n,
                                             device=self.device)
                                     for k in aux_models.keys()})
+
+        # Config aux models for eval per item in batch
+        for k, maux in aux_models.items():
+            maux.set_per_element_loss()
 
         total_loss = 0
 
@@ -545,7 +576,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         )._get_uuid()
 
         observations = self.envs.reset()
-        batch = batch_obs(observations, self.device)
+        batch = batch_obs_augment_aux(observations, self.device)
 
         current_episode_reward = torch.zeros(
             self.envs.num_envs, 1, device=self.device
@@ -585,6 +616,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         video_log_int = self.config.VIDEO_OPTION_INTERVAL
         num_frames = 0
 
+        # ---
+        plot_pos = -1
+        prev_true_pos = []
+        prev_pred_pos = []
+
         while (
             len(stats_episodes) <= self.config.TEST_EPISODE_COUNT
             and self.envs.num_envs > 0
@@ -605,9 +641,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                 prev_actions.copy_(actions)
 
                 if 'action' in batch:
-                    prev_actions = torch.tensor([[batch['action']]],
-                                           dtype=torch.long,
-                                           device=actions.device)
+                    prev_actions = batch['action'].unsqueeze(1).to(
+                        actions.device).long()
 
                 for k, v in aux_out.items():
                     loss = aux_models[k].calc_loss(
@@ -619,10 +654,36 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                         actions
                     )
                     total_loss += loss
-                    other_losses[k] += loss
+
+                    if other_losses[k] is None:
+                        other_losses[k] = loss
+                    else:
+                        other_losses[k] += loss
                     if len(prev_actions) == 1:
                         other_losses_action[k][0, prev_actions.item()] += \
                             loss.item()
+
+
+                if plot_pos >= 0:
+                    prev_true_pos.append(batch["gps_compass_start"][
+                                             plot_pos].data[:2].cpu().numpy())
+                    prev_pred_pos.append(aux_out["rel_start_pos_reg"][
+                                             plot_pos].data.cpu().numpy() * 15)
+                    if num_frames % 10 == 0:
+                        xx, yy = [], []
+                        for x, y in prev_true_pos:
+                            xx.append(x)
+                            yy.append(y)
+                        plt.scatter(xx, yy, label="true_pos")
+                        xx, yy = [], []
+                        for x, y in prev_pred_pos:
+                            xx.append(x)
+                            yy.append(y)
+                        plt.scatter(xx, yy, label="pred_pos")
+                        plt.legend()
+                        plt.show()
+                        plt.waitforbuttonpress()
+                        plt.close()
 
             num_frames += 1
             outputs = self.envs.step([a[0].item() for a in actions])
@@ -630,7 +691,16 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             observations, rewards, dones, infos = [
                 list(x) for x in zip(*outputs)
             ]
-            batch = batch_obs(observations, self.device)
+
+            not_done_masks = torch.tensor(
+                [[0.0] if done else [1.0] for done in dones],
+                dtype=torch.float,
+                device=self.device,
+            )
+
+            map_values = self._get_mapping(observations, aux_out)
+            batch = batch_obs_augment_aux(observations, device=self.device, map_values=map_values,
+                                          masks=not_done_masks)
 
             valid_map_size = [float(ifs["top_down_map"]["valid_map"].sum()) for ifs in infos]
             discovered_factor = [infos[ix]["top_down_map"]["explored_map"].sum() /
@@ -640,11 +710,6 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             seen_factor = [infos[ix]["top_down_map"]["ful_fog_of_war_mask"].sum() /
                            valid_map_size[ix] for ix in range(len(infos))]
 
-            not_done_masks = torch.tensor(
-                [[0.0] if done else [1.0] for done in dones],
-                dtype=torch.float,
-                device=self.device,
-            )
 
             rewards = torch.tensor(
                 rewards, dtype=torch.float, device=self.device
@@ -696,6 +761,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                         other_losses[k][i] = 0
                     num_frames = 0
                     print("-" * 100)
+
                     current_episode_reward[i] = 0
                     current_episode_go_reward[i] = 0
                     # use scene_id + episode_id as unique id for storing stats
@@ -738,6 +804,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     s_index.pop(idx)
 
                 current_episode_go_reward = current_episode_go_reward[s_index]
+                for k, v in other_losses.items():
+                    other_losses[k] = other_losses[k][s_index]
+
 
             (
                 self.envs,

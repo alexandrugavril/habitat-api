@@ -48,45 +48,6 @@ CLASSES = dict({  # REPLICA class name: COCO class name
 
 
 @registry.register_sensor
-class EmptySensor(Sensor):
-    r"""
-    """
-
-    def __init__(
-        self, *args: Any, sim: Simulator, config: Config, **kwargs: Any
-    ):
-        self._dimensionality = self.no_classes
-        uuid = getattr(config, "UUID")
-        uuid = (self._dimensionality,)
-
-        self._uuid = uuid
-
-        super().__init__(config=config)
-
-    def _get_uuid(self, *args: Any, **kwargs: Any):
-        return self._uuid
-
-    def _get_sensor_type(self, *args: Any, **kwargs: Any):
-        return SensorTypes.NORMAL
-
-    def _get_observation_space(self, *args: Any, **kwargs: Any):
-        sensor_shape = (self._dimensionality,)
-
-        return spaces.Box(
-            low=0,
-            high=100,
-            shape=sensor_shape,
-            dtype=np.int,
-        )
-
-    def get_observation(
-        self, *args: Any, observations, episode: Episode, **kwargs: Any
-    ):
-
-        return None
-
-
-@registry.register_sensor
 class GoalClass(Sensor):
     r"""
     """

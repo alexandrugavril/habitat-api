@@ -115,6 +115,39 @@ def batch_obs(
     return batch
 
 
+def batch_obs_augment_aux(
+    observations: List[Dict], device: Optional[torch.device] = None,
+    map_values: dict = None, masks: Optional[torch.device] = None
+) -> Dict[str, torch.Tensor]:
+    r"""Transpose a batch of observation dicts to a dict of batched
+    observations.
+
+    Args:
+        observations:  list of dicts of observations.
+        device: The torch.device to put the resulting tensors on.
+            Will not move the tensors if None
+
+    Returns:
+        transposed dict of lists of observations.
+    """
+    batch = defaultdict(list)
+
+    for obs in observations:
+        for sensor in obs:
+            batch[sensor].append(_to_tensor(obs[sensor]))
+
+    for sensor in batch:
+        batch[sensor] = torch.stack(batch[sensor], dim=0).to(
+            device=device, dtype=torch.float
+        )
+
+    if map_values is not None:
+        for k, v in map_values.items():
+            batch[k].copy_(v * masks.to(v.device))
+
+    return batch
+
+
 def poll_checkpoint_folder(
     checkpoint_folder: str, previous_ckpt_ind: int
 ) -> Optional[str]:
