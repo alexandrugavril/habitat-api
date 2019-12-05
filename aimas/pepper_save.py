@@ -4,7 +4,7 @@ from habitat_baselines.common.pepper_env import PepperRLExplorationEnv
 import cv2
 import pickle
 import numpy as np
-
+import matplotlib.pyplot as plt
 rgb_buffer = []
 depth_buffer = []
 forward_step = 0.25
@@ -30,21 +30,47 @@ observations, reward, done, info = \
     pepper_env.reset()
 last_pose = pepper_env.get_position()[0]
 
+x_p = []
+y_p = []
+
+x_o = []
+y_o = []
+
+
+plt.ion()
+plt.show()
+
 while key != ord('q'):
     step += 1
     last_action = c_action
     observations, reward, done, info = \
         pepper_env.step(None, action={"action": c_action})
-    pose = pepper_env.get_position()
-    sonar = pepper_env.get_sonar()
+    pose = observations['robot_position']
+    rot = observations['robot_rotation']
+    sonar = observations['sonar']
+    odom = observations['odom']
 
-    movement = np.linalg.norm(pose[0] - last_pose)
+
+    gps_to_goal = observations['gps_with_pointgoal_compass']
+    movement = np.linalg.norm(pose - last_pose)
 
     print("-" * 100)
-    print("Sonar:", sonar)
     print("Pose:", pose)
+    print("Odom:", odom)
+    print("Sonar:", sonar)
     print("Movement:", movement)
     print("STEP:", step)
+
+    x_p.append(pose[0])
+    y_p.append(pose[1])
+    x_o.append(odom[0][0])
+    y_o.append(odom[0][1])
+
+    plt.clf()
+    plt.plot(x_p, y_p)
+    plt.plot(x_o, y_o, "--")
+    plt.pause(0.01)
+
     rgb = observations['rgb']
     depth = observations['depth']
 
@@ -86,12 +112,15 @@ while key != ord('q'):
     values.append({
         "rgb": rgb,
         "depth": depth,
-        "position": pose[0],
-        "rotation": pose[1],
+        "odom_pose": odom[0],
+        "odom_rot": odom[1],
+        "position": pose,
+        "rotation": rot,
         "action": last_action,
+        "gps_to_goal_compass": gps_to_goal,
         "sonar": sonar
     })
-    last_pose = pose[0]
+    last_pose = pose
     if step == 250:
         break
 
@@ -100,3 +129,4 @@ now = datetime.datetime.now()
 dt_string = now.strftime("%d.%m.%Y %H:%M:%S")
 pickle.dump(values, open(dt_string + "pepper_save.p", "wb"))
 pepper_env.close()
+

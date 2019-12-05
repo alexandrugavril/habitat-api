@@ -12,7 +12,8 @@ from habitat.tasks.utils import (
     quaternion_from_coeff,
     quaternion_rotate_vector,
 )
-
+import matplotlib.pyplot as plt
+import math
 import numpy as np
 import base64
 import cv2
@@ -23,15 +24,58 @@ from habitat.core.dataset import Dataset, Episode
 from habitat_baselines.common.baseline_registry import baseline_registry
 
 
+class RelPosToGlobal:
+    def __init__(self):
+        self.position = np.array([0, 0, 0], dtype=np.float)
+        self.orientation = 0
+        self.x = []
+        self.y = []
+        self.rotations = []
+
+    def add_relative(self, dx, dy, rot):
+        xi = self.position[0]
+        yi = self.position[1]
+
+        xf = math.cos(self.orientation) * dx - math.sin(self.orientation) * dy
+        yf = math.sin(self.orientation) * dx + math.cos(self.orientation) * dy
+        self.orientation -= rot
+
+        self.position[0] += xf
+        self.position[1] += yf
+
+        self.x.append(self.position[0])
+        self.y.append(self.position[1])
+        self.rotations.append(self.orientation)
+
+        return self.position, self.orientation
+
+
+def _quat_to_xy_heading(quat):
+    direction_vector = np.array([0, 0, -1])
+
+    heading_vector = quaternion_rotate_vector(quat, direction_vector)
+
+    phi = cartesian_to_polar(-heading_vector[2], heading_vector[0])[1]
+    return np.array(phi)
+
+
 @baseline_registry.register_env(name="PepperPlaybackEnv")
 class PepperPlaybackEnv(habitat.RLEnv):
     def __init__(self, config: Config, dataset: Optional[Dataset] = None):
         print("Initializing ENV")
 
+        self._previous_action = None
+        self.ep = Namespace()
+        self.ep.episode_id = 0
+        self.ep.scene_id = 0
+
+        self.x = []
+        self.y = []
         # Initialize ROS Bridge
         self._pepper_config = config.PEPPER
 
-        self._ep_data = self.load_episode(self._pepper_config.EpisodePath)
+        self._all_ep_data = self.load_episode(self._pepper_config.EpisodePath)
+
         self._c_step = 0
 
         sim_config = config.TASK_CONFIG.SIMULATOR
@@ -55,55 +99,47 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
         #super().__init__(self._core_env_config, dataset)
 
-    def _quat_to_xy_heading(self, quat):
-        direction_vector = np.array([0, 0, -1])
-
-        heading_vector = quaternion_rotate_vector(quat, direction_vector)
-
-        phi = cartesian_to_polar(-heading_vector[2], heading_vector[0])[1]
-        return np.array(phi)
-
     def load_episode(self, path):
-        data = pickle.load(open(path, "rb"))
-        rotations = np.array([quaternion.from_euler_angles(
-            np.roll(c_data['rotation'], 1))
-                      for c_data in data])
-        positions = np.array([c_data['position'] for c_data in data])
+        import os
 
-        prev_pos = positions[0]
-        prev_rot = rotations[0]
-        prev_heading = np.array([self._quat_to_xy_heading(
-            prev_rot
-        )])
+        files = os.listdir(path)
+        data = []
+        for file in files:
+            f_path = os.path.join(path, file)
+            new_data = pickle.load(open(f_path, "rb"))
+            data.append(new_data)
 
+        for ep in data:
+            self.converter = RelPosToGlobal()
+            prev_pos = np.array([0, 0, 0])
+            prev_heading = np.array([0])
 
-        rel_positions = []
-        for c_data in data:
-            agent_position = c_data['position']
-            agent_rotation = quaternion.from_euler_angles(np.roll(c_data['rotation'], 1))
+            for c_data in ep:
 
-            relative_pos = quaternion_rotate_vector(
-                prev_rot.inverse(), agent_position - prev_pos
-            )
+                agent_position = c_data['position'][[0, 2, 1]]
+                agent_rotation = quaternion.from_euler_angles(
+                    np.roll(c_data['rotation'], 1))
+                relative_pos = quaternion_rotate_vector(
+                    agent_rotation, agent_position - prev_pos
+                )
 
-            heading = np.array([self._quat_to_xy_heading(
-                agent_rotation
-            )])
-            relative_heading = heading - prev_heading
+                heading = np.array([_quat_to_xy_heading(
+                    agent_rotation
+                )])
 
-            if np.abs(relative_heading) > np.pi:
-                relative_heading = np.mod(relative_heading, 2 * np.pi *
-                                          -np.sign(relative_heading))
+                relative_heading = heading - prev_heading
 
-            pos = np.array(
-                [relative_pos[0], relative_pos[2]], dtype=np.float32
-            )
+                if np.abs(relative_heading) > np.pi:
+                    relative_heading = np.mod(relative_heading, 2 * np.pi *
+                                              -np.sign(relative_heading))
+                pos = np.array(
+                    [relative_pos[0], relative_pos[2]], dtype=np.float32
+                )
 
-            prev_pos = agent_position
-            prev_heading = heading
-            prev_rot = agent_rotation
+                prev_pos = agent_position
+                prev_heading = heading
 
-            c_data['rel_position'] = np.concatenate([pos, relative_heading])
+                c_data['rel_position'] = np.concatenate([pos, relative_heading])
 
         return data
 
@@ -164,10 +200,7 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
     @property
     def current_episode(self) -> Type[Episode]:
-        ep = Namespace()
-        ep.episode_id = 0
-        ep.scene_id = 0
-        return ep
+        return self.ep
 
     def seed(self, seed: Optional[int] = None) -> None:
         pass
@@ -178,10 +211,6 @@ class PepperPlaybackEnv(habitat.RLEnv):
     def close(self) -> None:
         pass
 
-    def _wait_move_done(self):
-        import time
-        time.sleep(2)
-
     def resize_rgb(self, rgb):
         rgb = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         rgb = cv2.resize(rgb, (self._image_width, self._image_height))
@@ -190,6 +219,10 @@ class PepperPlaybackEnv(habitat.RLEnv):
     def resize_depth(self, depth):
         depth = (depth.astype(np.float) / depth.max()).astype(np.float)
         depth = cv2.resize(depth, (self._image_width, self._image_height))
+
+        if len(depth.shape) == 3:
+            depth = depth.astype('float32')
+            depth = cv2.cvtColor(depth, cv2.COLOR_BGR2GRAY)
         depth = depth.reshape((self._image_height, self._image_width, 1))
         return depth
 
@@ -200,32 +233,44 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
         rgb = [self.resize_rgb(c_data['rgb']) for c_data in data_batch]
         depth = [self.resize_depth(c_data['depth']) for c_data in data_batch]
-        sonar = [c_data['sonar'] for c_data in data_batch]
+
+        sonar = data_batch[-1]['sonar']
         position = [c_data['position'] for c_data in data_batch]
         rotation = [c_data['rotation'] for c_data in data_batch]
-        action = [c_data['action'] for c_data in data_batch]
-        rel_pos = [c_data['rel_position'] for c_data in data_batch]
+        action = data_batch[-1]['action']
+        rel_pos = data_batch[-1]['rel_position']
 
-        cv2.imshow("RGB", rgb[0])
-        cv2.imshow("Depth", depth[0])
-        cv2.waitKey(1)
+        self.converter.add_relative(rel_pos[0], rel_pos[1], rel_pos[2])
+        self.x.append(position[0][0])
+        self.y.append(position[0][1])
+
+        # cv2.imshow("RGB", np.vstack((rgb[0], rgb[1])))
+        # cv2.imshow("Depth", np.vstack((depth[0], depth[1])))
+        # print("ENV ACTION:", action)
+        # cv2.waitKey(0)
+
+        sonar = np.array([[sonar]])
+
         return {
             "rgb": np.concatenate(rgb, axis=2),
             "depth": np.concatenate(depth, axis=2),
-            "sonar": np.stack(sonar),
+            "depth2": sonar,
             "position": np.stack(position),
             "rotation": np.stack(rotation),
-            "action": np.stack(action),
-            'rel_position': np.stack(rel_pos)
+            "action": action,
+            'gps_compass': rel_pos
         }
 
     def reset(self):
+        print("Resetting ", self.ep.episode_id)
+        self._ep_data = self._all_ep_data[self.ep.episode_id]
+        if self._c_step > 0:
+            self.ep.episode_id = (self.ep.episode_id + 1) % len(self._all_ep_data)
+
         self._previous_action = None
 
         observations = self.get_obs()
         self._collected_positions = set()
-        self._depth_buffer = []
-        self._rgb_buffer = []
         self._c_step = 0
 
         return observations

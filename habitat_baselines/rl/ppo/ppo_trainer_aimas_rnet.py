@@ -519,7 +519,14 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.r_policy = self.agent.actor_critic.reachability_policy
 
         aux_models = self.actor_critic.net.aux_models
-        other_losses = dict({k: 0 for k in aux_models.keys()})
+        other_losses = dict({k: torch.zeros(self.envs.num_envs, 1,
+                                            device=self.device)
+                             for k in aux_models.keys()})
+        other_losses_action = dict({k: torch.zeros(self.envs.num_envs,
+                                                   self.envs.action_spaces[0].n,
+                                            device=self.device)
+                                    for k in aux_models.keys()})
+
         total_loss = 0
 
         if config.EVAL_MODE:
@@ -612,7 +619,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                         actions
                     )
                     total_loss += loss
-                    other_losses[k] += loss.item()
+                    other_losses[k] += loss
+                    if len(prev_actions) == 1:
+                        other_losses_action[k][0, prev_actions.item()] += \
+                            loss.item()
 
             num_frames += 1
             outputs = self.envs.step([a[0].item() for a in actions])
@@ -676,6 +686,16 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     episode_stats["reward_go"] = current_episode_go_reward[i].item()
                     episode_stats["map_discovered"] = discovered_factor[i]
                     episode_stats["map_seen"] = seen_factor[i]
+
+                    for k, v in other_losses.items():
+                        episode_stats[k] = v[i].item() / num_frames
+                        print("Loss:", k, episode_stats[k])
+                        print("Action:", k, other_losses_action[k] / num_frames)
+
+                        other_losses_action[k][i].fill_(0)
+                        other_losses[k][i] = 0
+                    num_frames = 0
+                    print("-" * 100)
                     current_episode_reward[i] = 0
                     current_episode_go_reward[i] = 0
                     # use scene_id + episode_id as unique id for storing stats
@@ -745,55 +765,17 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             )
         num_episodes = len(stats_episodes)
 
-        episode_reward_mean = aggregated_stats["reward"] / num_episodes
-        episode_go_reward_mean = aggregated_stats["reward_go"] / num_episodes
-        episode_map_discovered = aggregated_stats["map_discovered"] / num_episodes
-        episode_map_seen = aggregated_stats["map_seen"] / num_episodes
-        episode_metric_mean = aggregated_stats[self.metric_uuid] / num_episodes
-        episode_success_mean = aggregated_stats["success"] / num_episodes
+        episodes_agg_stats = dict()
+        for k, v in aggregated_stats.items():
+            episodes_agg_stats[k] = v / num_episodes
+            logger.info(f"Average episode {k}: {episodes_agg_stats[k]:.6f}")
 
-        # for k, v in other_losses.items():
-        #     print(k, v / num_frames)
+        for k, v in episodes_agg_stats.items():
+            writer.add_scalars(
+                f"eval_{k}",
+                {f"{split}_average {k}": v},
+                checkpoint_index
+            )
+            print(f"[{checkpoint_index}] average {k}", v)
 
-        logger.info(f"Average episode reward: {episode_reward_mean:.6f}")
-        logger.info(f"Average episode reward GO: {episode_go_reward_mean:.6f}")
-        logger.info(f"Average episode map discovered: {episode_map_discovered:.6f}")
-        logger.info(f"Average episode map seen: {episode_map_seen:.6f}")
-        logger.info(f"Average episode success: {episode_success_mean:.6f}")
-        logger.info(
-            f"Average episode {self.metric_uuid}: {episode_metric_mean:.6f}"
-        )
-
-        writer.add_scalars(
-            "eval_reward",
-            {
-                f"{split}_average reward": episode_reward_mean,
-                f"{split}_average go reward": episode_go_reward_mean},
-            checkpoint_index,
-        )
-        writer.add_scalars(
-            f"eval_map_discovered",
-            {f"{split}_average map discovered": episode_map_discovered},
-            checkpoint_index,
-        )
-        writer.add_scalars(
-            f"eval_map_seen",
-            {f"{split}_average map seen": episode_map_seen},
-            checkpoint_index,
-        )
-        writer.add_scalars(
-            f"eval_{self.metric_uuid}",
-            {f"{split}_average {self.metric_uuid}": episode_metric_mean},
-            checkpoint_index,
-        )
-        writer.add_scalars(
-            "eval_success",
-            {f"{split}_average success": episode_success_mean},
-            checkpoint_index,
-        )
-        print(f"[{checkpoint_index}] average reward", episode_reward_mean)
-        print(f"[{checkpoint_index}] average reward GO", episode_go_reward_mean)
-        print(f"[{checkpoint_index}] average map discovered", episode_map_discovered)
-        print(f"[{checkpoint_index}] average {self.metric_uuid}", episode_metric_mean)
-        print(f"[{checkpoint_index}] average success", episode_success_mean)
         self.envs.close()

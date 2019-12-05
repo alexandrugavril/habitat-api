@@ -101,15 +101,18 @@ _C.DETECTOR.out_size = 32
 # -----------------------------------------------------------------------------
 _C.PEPPER = CN()
 _C.PEPPER.BufferSize = 10
-_C.PEPPER.ForwardStep = 0.1
-_C.PEPPER.TurnStep = 0.15
+_C.PEPPER.ForwardStep = 0.25
+_C.PEPPER.TurnStep = 0.0872
 _C.PEPPER.RGBTopic = "/pepper_robot/naoqi_driver/camera/front/image_raw"
 _C.PEPPER.DepthTopic = "/pepper_robot/naoqi_driver/camera/depth/image_raw"
 _C.PEPPER.MoveTopic = "/move_base_simple/goal"
 _C.PEPPER.PoseTopic = "/slam_out_pose"
+_C.PEPPER.OdomTopic = "/pepper_robot/naoqi_driver/odom"
 _C.PEPPER.DisplayImages = False
+_C.PEPPER.GoalTopic = "/clickedpoint"
+_C.PEPPER.SonarTopic = "/pepper_robot/naoqi_driver/sonar/front"
 
-_C.PEPPER.EpisodePath = "./pepper_save.p"
+_C.PEPPER.EpisodePath = "/home/amiro/workspace/alex/habitat-api/dataset_pepper nou/"
 
 # -----------------------------------------------------------------------------
 # PROXIMAL POLICY OPTIMIZATION (PPO)
