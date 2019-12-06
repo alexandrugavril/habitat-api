@@ -12,7 +12,7 @@ CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
 LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
 TEST_EPISODE_COUNT: 36
 NUM_PROCESSES: 12  # Lets move to 12 number of envs
-SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"] #, "DEPTH2_SENSOR"]
+SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR", "DEPTH2_SENSOR"]
 NUM_UPDATES: 5000 # So as to train on 15 Mil frames
 HARD_NUM_UPDATES: 2500
 LOG_INTERVAL: 10
