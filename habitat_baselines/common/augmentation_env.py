@@ -33,10 +33,6 @@ class AugmentEnv(habitat.RLEnv):
         self._prev_obs = None
         self._fwd_steps = 0
         self._select_rotate = np.random.choice([1, 2])
-        self._num_steps = 0
-        self._cap_steps = 0 #384256
-        self._prev_reset = 0
-        self._max_episode_steps = self._env._max_episode_steps
 
     def _process_obs(self, obs):
 
@@ -48,12 +44,6 @@ class AugmentEnv(habitat.RLEnv):
 
         if self.cfg_rgb.ENABLED:
             obs["rgb"] = self.process_rgb(obs["rgb"])
-
-        if self.cfg_transform.ENABLED:
-            data = torch.cat([obs["rgb"].float(), obs["depth"]], dim=2)
-            data = self.move_image(data)
-            obs["rgb"] = data[:, :, :3]
-            obs["depth"] = data[:, :, -1].unsqueeze(2)
 
         if self.cfg_transform.ENABLED:
             data = torch.cat([obs["rgb"].float(), obs["depth"]], dim=2)
@@ -115,13 +105,10 @@ class AugmentEnv(habitat.RLEnv):
 
         observations = self._process_obs(observations)
         self._prev_obs = observations
+
         return observations
 
     def step(self, *args, **kwargs):
-        self._num_steps += 1
-        if self._cap_steps > 0:
-            self._env._max_episode_steps = max(10, int(self._num_steps/self._cap_steps * self._max_episode_steps))
-
         if self._explore_heuristic:
             sonar = self._prev_obs["depth2"]
             nonzero = sonar != 0

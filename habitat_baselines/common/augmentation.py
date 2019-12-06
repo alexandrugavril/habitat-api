@@ -118,7 +118,7 @@ class RandomSaturation(object):
         assert self.lower >= 0, "contrast lower must be non-negative."
 
     def __call__(self, image):
-        if random.randint(3):
+        if not random.randint(3):
             image[:, :, 1] *= random.uniform(self.lower, self.upper)
 
         return image
@@ -175,7 +175,7 @@ class RandomContrast(object):
 
     # expects float image
     def __call__(self, image):
-        if random.randint(3):
+        if not random.randint(3):
             alpha = random.uniform(self.lower, self.upper)
             image *= alpha
         return image
@@ -188,7 +188,7 @@ class RandomBrightness(object):
         self.delta = delta
 
     def __call__(self, image):
-        if random.randint(2):
+        if not random.randint(3):
             delta = random.uniform(-self.delta, self.delta)
             image += delta
         return image
@@ -262,7 +262,7 @@ class PhotometricDistort(object):
     def __call__(self, image):
         im = image.clone()
         im = self.rand_brightness(im)
-        if random.randint(3):
+        if random.randint(2):
             distort = Compose(self.pd[:-1])
         else:
             distort = Compose(self.pd[1:])
