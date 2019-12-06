@@ -36,6 +36,7 @@ class SimpleCNNRelu(nn.Module):
 
         self._drop_prob = drop_prob
 
+        print("i am here---" * 100)
         if self._n_input_rgb > 0:
             cnn_dims = np.array(
                 observation_space.spaces["rgb"].shape[:2], dtype=np.float32

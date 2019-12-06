@@ -1,0 +1,131 @@
+BASE_TASK_CONFIG_PATH: "configs/tasks/explore_replica.yaml"
+TRAINER_NAME: "ppoAimasReachability"
+ENV_NAME: "NavRLExploration"
+SIMULATOR_GPU_ID: {gpu_id}
+TORCH_GPU_ID: {gpu_id}
+VIDEO_OPTION: ["disk", "tensorboard"]
+VIDEO_OPTION_INTERVAL: 10
+TENSORBOARD_DIR: "results/{results_prefix}/explore_GO_test/tb"
+VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
+EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
+CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
+LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
+TEST_EPISODE_COUNT: 36
+NUM_PROCESSES: 12  # Lets move to 12 number of envs
+SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR", "DEPTH2_SENSOR"]
+NUM_UPDATES: 5000 # So as to train on 15 Mil frames
+HARD_NUM_UPDATES: 2500
+LOG_INTERVAL: 10
+CHECKPOINT_INTERVAL: 50
+COMMIT: "{commit_hash}"
+
+BATCH_INPUT: &batch 2
+
+TRANSFORM_RGB:
+  ENABLED: False # ___AUG____
+TRANSFORM_DEPTH:
+  ENABLED: False # ___AUG____
+  std_noise: 0.2
+  depth_min_th: 0.04
+  depth_max_th: 0.8
+  noise_interval: 0.04
+
+TASK_CONFIG:
+  TASK:
+    SUCCESS_IF_IN_VIEW: False
+    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR', 'GPS_COMPASS_SENSOR']
+    WITH_TARGET_ENCODING: True
+    GOAL_SENSOR_UUID: pointgoal_with_gps_compass
+    POSSIBLE_ACTIONS: ['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT']
+#    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
+  SIMULATOR:
+    NOISE_MULTIPLIER: 0.0
+    HABITAT_SIM_V0:
+      GPU_DEVICE_ID: {gpu_id}
+    RGB_SENSOR:
+      BATCH: *batch
+      V_OFFSET_NOISE: 0 # ___AUG____
+      V_OFFSET_NUM_STEPS: 100
+    DEPTH_SENSOR:
+      BATCH: *batch
+      V_OFFSET_NOISE: 0 # ___AUG____
+      V_OFFSET_NUM_STEPS: 100
+
+  ENVIRONMENT:
+    MAX_EPISODE_STEPS: 500
+    ITERATOR_OPTIONS:
+      GROUP_BY_SCENE: False
+      SHUFFLE: True
+    OVERRIDE_RAND_GOAL:
+      ENABLED: True
+      MIN_DIST: 1.
+      RADIUS: 0.2
+RL:
+  NO_OPERATION: True # ___AUG____
+  DEPTH_BLOCK_VIEW_FACTOR: 0.15 # ___AUG____
+  DEPTH_BLOCK_MIN_UNBLOCK: 0.1 # ___AUG____
+
+  SLACK_REWARD: 0.00
+  COLLISION_REWARD_ENABLED: False
+  SUCCESS_REWARD: 1.
+  COLLISION_REWARD: -0.1
+  COLLISION_DISTANCE: 0.3
+  PPO:
+    actor_critic:
+      num_recurrent_layers: 1
+      rnn_type: "GRU"
+      fixed_distribution: [0.8, 0.1, 0.1]
+      type: "ExploreNavBaselinePolicyAux"
+      aux: ["rel_pos", "action"] #
+      map_aux_to_obs: []
+      SonarPredictor:
+        loss_coeff: 1.
+      RelativePositionPredictor:
+        loss_coeff: 10.
+
+
+    visual_encoder: SimpleCNNRelu
+    visual_encoder_dropout: 0.0
+    channel_scale: 1
+    # ppo params
+    clip_param: 0.1 # Episodic curiosity has some kind of decaying cliprange
+    ppo_epoch: 4 #4
+    num_mini_batch: 4 # They have 4? which is slower should be increase no_envs? which give  3/envs/batch
+    value_loss_coef: 0.0 # 0.5
+    action_loss_coef: 0.0 #1.0
+    entropy_coef: 0.0 #0.01  # They use much smaller entropy coef 0.0066 (with grid oracle)
+    lr: 2.5e-4
+    eps: 1e-5
+    max_grad_norm: 0.5
+    num_steps: 256  # Episodic curiosity 256
+    hidden_size: 512
+    use_gae: True
+    gamma: 0.99
+    tau: 0.95
+    use_linear_clip_decay: False
+    use_linear_lr_decay: True
+    reward_window_size: 50
+
+  REACHABILITY:
+    enabled: False
+    train: False
+    skip_train_ppo_without_rtrain: False
+    only_intrinsic_reward: False
+    experience_buffer_size: 719992
+    num_recurrent_steps: 1
+    batch_size: 64
+    num_train_epochs: 10
+    feature_extractor_size: 512
+    memory_size: 200
+    log_freq: 100
+    grid_resolution: 1
+    optimizer: "Adam"
+    optimizer_args:
+      lr: 0.00025
+    max_action_distance_k: 5
+    negative_sample_multiplier: 5
+    curiosity_bonus_scale_a: 0.030
+    reward_shift_b: 0.5
+    novelty_threshold: 0.5
+    similarity_aggregation: "percentile"
+    similarity_percentile: 90
