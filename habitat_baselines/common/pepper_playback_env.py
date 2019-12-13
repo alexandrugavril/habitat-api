@@ -104,10 +104,14 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
         files = os.listdir(path)
         data = []
+        total_data = 0
         for file in files:
             f_path = os.path.join(path, file)
-            new_data = pickle.load(open(f_path, "rb"))
+            print("Loading:", f_path)
+            new_data = pickle.load(open(f_path, "rb"), encoding="latin1")
             data.append(new_data)
+            total_data += len(new_data)
+        print("Total frames:", total_data)
 
         for ep in data:
             self.converter = RelPosToGlobal()
@@ -115,31 +119,31 @@ class PepperPlaybackEnv(habitat.RLEnv):
             prev_heading = np.array([0])
 
             for c_data in ep:
+                if 'position' in c_data:
+                    agent_position = c_data['position'][[0, 2, 1]]
+                    agent_rotation = quaternion.from_euler_angles(
+                        np.roll(c_data['rotation'], 1))
+                    relative_pos = quaternion_rotate_vector(
+                        agent_rotation, agent_position - prev_pos
+                    )
 
-                agent_position = c_data['position'][[0, 2, 1]]
-                agent_rotation = quaternion.from_euler_angles(
-                    np.roll(c_data['rotation'], 1))
-                relative_pos = quaternion_rotate_vector(
-                    agent_rotation, agent_position - prev_pos
-                )
+                    heading = np.array([_quat_to_xy_heading(
+                        agent_rotation
+                    )])
 
-                heading = np.array([_quat_to_xy_heading(
-                    agent_rotation
-                )])
+                    relative_heading = heading - prev_heading
 
-                relative_heading = heading - prev_heading
+                    if np.abs(relative_heading) > np.pi:
+                        relative_heading = np.mod(relative_heading, 2 * np.pi *
+                                                  -np.sign(relative_heading))
+                    pos = np.array(
+                        [relative_pos[0], relative_pos[2]], dtype=np.float32
+                    )
 
-                if np.abs(relative_heading) > np.pi:
-                    relative_heading = np.mod(relative_heading, 2 * np.pi *
-                                              -np.sign(relative_heading))
-                pos = np.array(
-                    [relative_pos[0], relative_pos[2]], dtype=np.float32
-                )
+                    prev_pos = agent_position
+                    prev_heading = heading
 
-                prev_pos = agent_position
-                prev_heading = heading
-
-                c_data['rel_position'] = np.concatenate([pos, relative_heading])
+                    c_data['rel_position'] = np.concatenate([pos, relative_heading])
 
         return data
 
@@ -234,32 +238,37 @@ class PepperPlaybackEnv(habitat.RLEnv):
         rgb = [self.resize_rgb(c_data['rgb']) for c_data in data_batch]
         depth = [self.resize_depth(c_data['depth']) for c_data in data_batch]
 
-        sonar = data_batch[-1]['sonar']
-        position = [c_data['position'] for c_data in data_batch]
-        rotation = [c_data['rotation'] for c_data in data_batch]
-        action = data_batch[-1]['action']
-        rel_pos = data_batch[-1]['rel_position']
 
-        self.converter.add_relative(rel_pos[0], rel_pos[1], rel_pos[2])
-        self.x.append(position[0][0])
-        self.y.append(position[0][1])
+        if 'position' in data_batch[-1]:
+            sonar = data_batch[-1]['sonar']
+            position = [c_data['position'] for c_data in data_batch]
+            rotation = [c_data['rotation'] for c_data in data_batch]
+            action = data_batch[-1]['action']
+            rel_pos = data_batch[-1]['rel_position']
 
-        # cv2.imshow("RGB", np.vstack((rgb[0], rgb[1])))
-        # cv2.imshow("Depth", np.vstack((depth[0], depth[1])))
-        # print("ENV ACTION:", action)
-        # cv2.waitKey(0)
+            self.converter.add_relative(rel_pos[0], rel_pos[1], rel_pos[2])
+            self.x.append(position[0][0])
+            self.y.append(position[0][1])
 
-        sonar = np.array([[sonar]])
+            sonar = np.array([[sonar]])
 
-        return {
-            "rgb": np.concatenate(rgb, axis=2),
-            "depth": np.concatenate(depth, axis=2),
-            "depth2": sonar,
-            "position": np.stack(position),
-            "rotation": np.stack(rotation),
-            "action": action,
-            'gps_compass': rel_pos
-        }
+            return {
+                "rgb": np.concatenate(rgb, axis=2),
+                "depth": np.concatenate(depth, axis=2),
+                "depth2": sonar,
+                "position": np.stack(position),
+                "rotation": np.stack(rotation),
+                "action": action,
+                'gps_compass': rel_pos
+            }
+        else:
+            return {
+                'rgb': np.concatenate(rgb, axis=2),
+                "depth": np.concatenate(depth, axis=2)
+            }
+
+
+
 
     def reset(self):
         print("Resetting ", self.ep.episode_id)

@@ -13,6 +13,8 @@ turn_step = 0.1
 cfg = get_config()
 print(cfg)
 pepper_env = PepperPlaybackEnv(cfg)
+observations = \
+    pepper_env.reset()
 x_p = []
 y_p = []
 x_o = []
@@ -24,23 +26,20 @@ while key != ord('q'):
         pepper_env.step(None, action={"action": 0})
 
     rgb = observations['rgb']
+    rgb = cv2.cvtColor(rgb, cv2.COLOR_BGR2RGB)
+
     depth = observations['depth']
-    pose = observations['position']
-    print(pose)
-    rot = observations['rotation']
-    action = observations['action']
-    rel_pose = observations['gps_compass']
+    if('position' in observations):
+        pose = observations['position']
+        print(pose)
+        x_p.append(pose[0][0])
+        y_p.append(pose[0][1])
+        plt.clf()
+        plt.plot(x_p, y_p)
+        plt.plot(x_o, y_o, "--")
+        plt.pause(0.01)
 
     print(i)
-
-    x_p.append(pose[0][0])
-    y_p.append(pose[0][1])
-
-    plt.clf()
-    plt.plot(x_p, y_p)
-    plt.plot(x_o, y_o, "--")
-    plt.pause(0.01)
-
     cv2.imshow("RGB", rgb)
     cv2.imshow("Depth", depth)
     # print('-'*100)
@@ -48,9 +47,10 @@ while key != ord('q'):
     # print(pose)
     # print(rel_pose)
     #
-    key = cv2.waitKey(1)
+    key = cv2.waitKey(0)
     i = i + 1
     if done:
-        break
+        observations = \
+            pepper_env.reset()
 
 pepper_env.close()

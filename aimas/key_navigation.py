@@ -37,7 +37,7 @@ CLASSES = dict({  # REPLICA class name: COCO class name
     "sink": "sink"
 })
 
-detector = YoloDetector("/raid/workspace/alexandrug/habitat-api/yolov3/config/yolo_config.yaml")
+#detector = YoloDetector("yolov3/config/yolo_config.yaml")
 
 
 def get_goal(room, ep):
@@ -276,7 +276,7 @@ def example():
             im = cv2.rectangle(im, (xpx_low, ypx_low), (xpx_high, ypx_high), (0, 255, 0), 1)
 
         #output_im = np.concatenate((im, top_down_map), axis=1)
-        detections, im_detections = detector.detect(im)
+        # detections, im_detections = detector.detect(im)
         cv2.imshow("RGB", im)
 
     print("Episode finished after {} steps.".format(count_steps))

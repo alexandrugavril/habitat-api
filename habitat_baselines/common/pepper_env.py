@@ -265,16 +265,16 @@ class PepperRLExplorationEnv(habitat.RLEnv):
         if action == 0:
             print("Action:", "Forward", self._forward_step, self._turn_step)
             m = _get_movement_ros_message(self._forward_step, 0)
-            self._publisher_move.publish(m)
+            #self._publisher_move.publish(m)
         elif action == 1:
             print("Action:", "Left", 0, self._turn_step)
             m = _get_movement_ros_message(0, self._turn_step)
-            self._publisher_move.publish(m)
+            #self._publisher_move.publish(m)
         elif action == 2:
             print("Action:", "Right", 0, self._turn_step)
             m = _get_movement_ros_message(0, -1 * self._turn_step)
-            self._publisher_move.publish(m)
-        self._wait_move_done()
+            #self._publisher_move.publish(m)
+        #self._wait_move_done()
 
     def wait_all_fresh(self):
         print(self._fresh_depth, self._fresh_rgb, self._fresh_pose,
