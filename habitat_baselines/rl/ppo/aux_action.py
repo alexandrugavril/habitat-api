@@ -13,7 +13,7 @@ class Accuracy(nn.Module):
 
 class ActionPrediction(nn.Module):
     def __init__(self, cfg, visual_feat_size, target_encoding_size,
-                 rnn_size):
+                 rnn_size, **kwargs):
         super().__init__()
 
         out_size = cfg.out_size
