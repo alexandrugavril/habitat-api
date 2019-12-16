@@ -16,7 +16,7 @@ class AvgLoss(nn.Module):
 
 class RelativeRegressionStartPositionPredictor(nn.Module):
     def __init__(self, cfg, visual_feat_size, target_encoding_size,
-                 rnn_size):
+                 rnn_size, **kwargs):
         super().__init__()
 
         without_rotation = 1
