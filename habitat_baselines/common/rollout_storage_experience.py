@@ -5,11 +5,79 @@
 # LICENSE file in the root directory of this source tree.
 
 from collections import defaultdict
-
+from typing import List
 import torch
 import numpy as np
 
 from habitat import Config, logger
+
+
+class ObsExperienceMemory:
+    r"""
+        Class for storing input / output pair for adversarial training
+    """
+    def __init__(self, memory_size: int, sizes: List[torch.Size],
+                 device=torch.device('cpu')):
+
+        self.memory_size = int(memory_size)
+        self.device = device
+
+        self.memory = [
+            torch.zeros((self.memory_size, *x), device=device) for x in sizes
+        ]
+        self._add_pos = 0
+        self._filled_mem = 0
+        self.pos_index = 0
+        self.indexes = torch.zeros(0)
+
+    def insert(self, data: List[torch.Tensor]):
+        add_pos = self._add_pos
+        max_pos = self.memory_size
+
+        for i, x in enumerate(data):
+            if isinstance(x, np.ndarray):
+                x = torch.from_numpy(x)
+            self.memory[i][add_pos].copy_(x)
+
+        self._add_pos = (add_pos + 1) % max_pos
+        self._filled_mem += 1
+
+    def calc_num_batches(self, batch_size: int):
+        mem_size = min(self._filled_mem, self.memory_size)
+        if mem_size > len(self.indexes):
+            # Reset indexes
+            self.indexes = torch.randperm(mem_size, device=self.device)
+
+        mem_size = len(self.indexes)
+        num_batches = mem_size // batch_size
+
+        return num_batches
+
+    @property
+    def filled_memory_size(self):
+        return min(self._filled_mem, self.memory_size)
+
+    def sample(self, batch_size: int, device=None):
+        pos_index = self.pos_index
+
+        mem_size = len(self.indexes)
+
+        if pos_index + batch_size > mem_size:
+            assert self._filled_mem > batch_size, f"Not enough in memory"
+
+            mem_size = min(self._filled_mem, self.memory_size)
+            pos_index = 0
+            self.indexes = torch.randperm(mem_size, device=self.device)
+
+        sample = [
+            x[self.indexes[pos_index: pos_index+batch_size]] for x in
+            self.memory
+        ]
+        if device is not None:
+            sample = [x.to(device) for x in sample]
+        self.pos_index += batch_size
+
+        return sample
 
 
 class ObsExperienceRollout:
@@ -250,7 +318,7 @@ if __name__ == "__main__":
     obs = {"rgb": torch.rand(num_steps, num_envs, 3, 5, 5)}
     pos_dist = 3
     neg_dist = 5
-    batch_size = 4
+    b_size = 4
 
     rollout = ObsExperienceRollout(num_steps, num_envs, observation_space,
                                    device=device)

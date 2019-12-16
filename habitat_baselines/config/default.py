@@ -41,6 +41,7 @@ _C.LOG_FILE = "train.log"
 _C.CHECKPOINT_INTERVAL = 50
 _C.COMMIT = ""
 _C.EVAL_MODE = False
+_C.PRETRAINED_CHECKPOINT_PATH = ""
 
 # -----------------------------------------------------------------------------
 # IMAGE TRANSFORM
@@ -107,8 +108,8 @@ _C.PEPPER.RGBTopic = "/pepper_robot/naoqi_driver/camera/front/image_raw"
 _C.PEPPER.DepthTopic = "/pepper_robot/naoqi_driver/camera/depth/image_raw"
 _C.PEPPER.MoveTopic = "/move_base_simple/goal"
 _C.PEPPER.PoseTopic = "/slam_out_pose"
-_C.PEPPER.OdomTopic = "/pepper_robot/naoqi_driver/odom"
 _C.PEPPER.DisplayImages = False
+_C.PEPPER.OdomTopic = "/pepper_robot/naoqi_driver/odom"
 _C.PEPPER.GoalTopic = "/clickedpoint"
 _C.PEPPER.SonarTopic = "/pepper_robot/naoqi_driver/sonar/front"
 
@@ -138,6 +139,26 @@ _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.out_size = 3
 _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.loss_coeff = 1.
 _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.target = "gps_compass_start"
 _C.RL.PPO.actor_critic.RelativeRegressionStartPositionPredictor.max_value = 15.
+
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation = CN()
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.name = "adv_domain_adaptation"
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.out_size = 0
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.loss_coeff = 1.
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.env_memory_size = 1000.
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.real_memory_size = 1000.
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.finetune_rl = False
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.train_epochs = 1000
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.batch_size = 64
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_name_d = "Adam"
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_name_v = "Adam"
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_param_d = CN()
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_param_d.lr = 0.0001
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_param_v = CN()
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_param_v.lr = 0.0004
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.feature_loss = "mse_loss"
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.log_freq = 2
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_step_d = 1
+_C.RL.PPO.actor_critic.AdversarialDomainAdaptation.optim_step_v = 1
 
 _C.RL.PPO.actor_critic.ActionPrediction = CN()
 _C.RL.PPO.actor_critic.ActionPrediction.name = "action"
