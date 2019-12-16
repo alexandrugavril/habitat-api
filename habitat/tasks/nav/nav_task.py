@@ -10,6 +10,7 @@ import attr
 import cv2
 import numpy as np
 from gym import spaces
+import collections
 
 from habitat.config import Config
 from habitat.core.dataset import Dataset, Episode
@@ -473,6 +474,79 @@ class EpisodicGPSCompassSensor(HeadingSensor):
         self._prev_pos = agent_position
         self._prev_heading = heading
         self._prev_rotation = agent_state.rotation
+
+        return np.concatenate([pos, relative_heading])
+
+
+@registry.register_sensor(name="GPSCompassRelativeSensor")
+class EpisodicGPSCompassRelativeSensor(HeadingSensor):
+    def __init__(
+        self, sim: Simulator, config: Config, *args: Any, **kwargs: Any
+    ):
+        self._sim = sim
+
+        self._dimensionality = getattr(config, "DIMENSIONALITY", 2)
+        self._relative_dist = getattr(config, "RELATIVE_STEP", 1)
+        assert self._dimensionality in [3, 4]
+        self._prev_pos = collections.deque(maxlen=self._relative_dist)
+        self._prev_heading = collections.deque(maxlen=self._relative_dist)
+        self._prev_rotation = collections.deque(maxlen=self._relative_dist)
+        super().__init__(sim=sim, config=config, *args, **kwargs)
+
+    def _get_uuid(self, *args: Any, **kwargs: Any):
+        return "gps_compass_relative"
+
+    def _get_sensor_type(self, *args: Any, **kwargs: Any):
+        return SensorTypes.POSITION
+
+    def _get_observation_space(self, *args: Any, **kwargs: Any):
+        sensor_shape = (self._dimensionality,)
+        return spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=sensor_shape,
+            dtype=np.float32,
+        )
+
+    def get_observation(
+        self, *args: Any, observations, episode, **kwargs: Any
+    ):
+        env_reset = "action" not in kwargs
+
+        agent_state = self._sim.get_agent_state()
+        if env_reset:
+            self._prev_rotation.clear()
+            self._prev_pos.clear()
+            self._prev_heading.clear()
+            self._prev_rotation.append(agent_state.rotation)
+            self._prev_pos.append(agent_state.position)
+            self._prev_heading.append(np.array([self._quat_to_xy_heading(
+                agent_state.rotation)]))
+
+        agent_position = agent_state.position
+        relative_pos = quaternion_rotate_vector(
+            self._prev_rotation[0].inverse(), agent_position -
+                                              self._prev_pos[0]
+        )
+
+        heading = np.array([self._quat_to_xy_heading(
+            agent_state.rotation
+        )])
+        relative_heading = heading - self._prev_heading[0]
+        if np.abs(relative_heading) > np.pi:
+            relative_heading = np.mod(relative_heading, 2 * np.pi *
+                                      -np.sign(relative_heading))
+
+        if self._dimensionality == 3:
+            pos = np.array(
+                [-relative_pos[2], relative_pos[0]], dtype=np.float32
+            )
+        else:
+            pos = relative_pos.astype(np.float32)
+
+        self._prev_pos.append(agent_position)
+        self._prev_heading.append(heading)
+        self._prev_rotation.append(agent_state.rotation)
 
         return np.concatenate([pos, relative_heading])
 
