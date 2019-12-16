@@ -19,7 +19,7 @@ class SimpleCNN(nn.Module):
                  channel_scale=1):
         super().__init__()
         if "rgb" in observation_space.spaces:
-            self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
+                self._n_input_rgb = observation_space.spaces["rgb"].shape[2]
         else:
             self._n_input_rgb = 0
 

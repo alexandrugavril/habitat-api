@@ -87,7 +87,8 @@ class ExploreNavBaselineNetAux(Net):
         for aux_type in cfg.aux:
             aux_cfg = getattr(cfg, AUX_CLASSES[aux_type].__name__)
             aux_models[aux_type] = AUX_CLASSES[aux_type](
-                aux_cfg, visual_feat_size, t_enc_size, rnn_out_size)
+                aux_cfg, visual_feat_size, t_enc_size, rnn_out_size,
+                observation_space=observation_space)
 
         print(rnn_type, num_recurrent_layers)
         self.state_encoder = RNNStateEncoder(

@@ -13,11 +13,11 @@ from habitat_baselines.rl.models.simple_cnn_relu import SimpleCNNRelu
 from habitat_baselines.rl.ppo.aux_relative_position import RelativePositionPredictor
 from habitat_baselines.rl.ppo.aux_sonar import SonarPredictor
 from habitat_baselines.rl.ppo.aux_action import ActionPrediction
+from habitat_baselines.rl.ppo.aux_adversarial import \
+    AdversarialDomainAdaptation
 from habitat_baselines.rl.ppo.aux_relative_position_start_regression import \
     RelativeRegressionStartPositionPredictor
 
-from habitat_baselines.rl.ppo.aux_relative_position_start_discrete import \
-    RelativeDiscreteStartPositionPredictor
 
 VISUAL_ENCODER_MODELS = dict({
     "SimpleCNN": SimpleCNN,
@@ -28,9 +28,9 @@ VISUAL_ENCODER_MODELS = dict({
 AUX_CLASSES = dict({
     "rel_pos": RelativePositionPredictor,
     "rel_start_pos_reg": RelativeRegressionStartPositionPredictor,
-    "rel_start_pos_d": RelativeDiscreteStartPositionPredictor,
     "sonar": SonarPredictor,
     "action": ActionPrediction,
+    "adv_domain_adaptation": AdversarialDomainAdaptation,
 })
 
 
