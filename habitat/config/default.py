@@ -176,6 +176,13 @@ _C.TASK.GPS_COMPASS_START_SENSOR = CN()
 _C.TASK.GPS_COMPASS_START_SENSOR.TYPE = "GPSCompassStartSensor"
 _C.TASK.GPS_COMPASS_START_SENSOR.DIMENSIONALITY = 3
 # -----------------------------------------------------------------------------
+# # GPS COMPASS Relative START SENSOR
+# -----------------------------------------------------------------------------
+_C.TASK.GPS_COMPASS_RELATIVE_SENSOR = CN()
+_C.TASK.GPS_COMPASS_RELATIVE_SENSOR.TYPE = "GPSCompassRelativeSensor"
+_C.TASK.GPS_COMPASS_RELATIVE_SENSOR.DIMENSIONALITY = 3
+_C.TASK.GPS_COMPASS_RELATIVE_SENSOR.RELATIVE_STEP = 5
+# -----------------------------------------------------------------------------
 # # PROXIMITY SENSOR
 # -----------------------------------------------------------------------------
 _C.TASK.PROXIMITY_SENSOR = CN()
