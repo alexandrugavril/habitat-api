@@ -18,14 +18,28 @@ import numpy as np
 import base64
 import cv2
 import pickle
+import sys
+
 from habitat import Config, Env
 from habitat.core.dataset import Dataset, Episode
 
 from habitat_baselines.common.baseline_registry import baseline_registry
 
 
+def add_relative(c_pos, n_pos):
+    xi, yi, orientation = c_pos
+    dx, dy, rot = n_pos
+
+    xf = math.cos(orientation) * dx - math.sin(orientation) * dy
+    yf = math.sin(orientation) * dx + math.cos(orientation) * dy
+
+    orientation -= rot
+
+    return np.array([xi + xf, yi + yf, orientation])
+
+
 class RelPosToGlobal:
-    def __init__(self):
+    def __init__(self, num_steps = sys.maxint):
         self.position = np.array([0, 0, 0], dtype=np.float)
         self.orientation = 0
         self.x = []
@@ -92,6 +106,10 @@ class PepperPlaybackEnv(habitat.RLEnv):
         self._goal_sensor_dim = config.TASK_CONFIG.TASK.\
             POINTGOAL_WITH_GPS_COMPASS_SENSOR.DIMENSIONALITY
 
+        self._accum_rel_pos_step = config.TASK_CONFIG.TASK. \
+            GPS_COMPASS_RELATIVE_SENSOR.RELATIVE_STEP
+
+
         self._collected_positions = set()
 
         self.init_obs_space()
@@ -115,6 +133,7 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
         for ep in data:
             self.converter = RelPosToGlobal()
+
             prev_pos = np.array([0, 0, 0])
             prev_heading = np.array([0])
 
@@ -187,11 +206,19 @@ class PepperPlaybackEnv(habitat.RLEnv):
             dtype=np.float32,
         )
 
+        gps_compass_relative_space = spaces.Box(
+            low=np.finfo(np.float32).min,
+            high=np.finfo(np.float32).max,
+            shape=(self._goal_sensor_dim,),
+            dtype=np.float32,
+        )
+
         self.observation_space.spaces = {
             "rgb": rgb_space,
             "depth": depth_space,
             self.goal_sensor_uuid: pointgoal_with_gps_compass_space,
-            "gps_compass": gps_compass_space
+            "gps_compass": gps_compass_space,
+            "gps_compass_relative": gps_compass_relative_space
         }
 
     @property
@@ -233,24 +260,30 @@ class PepperPlaybackEnv(habitat.RLEnv):
     def get_obs(self):
         assert self._c_step + self._rgb_batch_size < len(self._ep_data)
 
+        rel_s_idx = max(self._c_step - self._accum_rel_pos_step, 0)
+        rel_s_pos = self._ep_data[rel_s_idx][-1]['rel_position']
+
         data_batch = self._ep_data[self._c_step: self._c_step + self._rgb_batch_size]
 
         rgb = [self.resize_rgb(c_data['rgb']) for c_data in data_batch]
         depth = [self.resize_depth(c_data['depth']) for c_data in data_batch]
-
 
         if 'position' in data_batch[-1]:
             sonar = data_batch[-1]['sonar']
             position = [c_data['position'] for c_data in data_batch]
             rotation = [c_data['rotation'] for c_data in data_batch]
             action = data_batch[-1]['action']
+
             rel_pos = data_batch[-1]['rel_position']
 
+            print(rel_s_idx)
+            print(rel_s_pos)
+            print(rel_pos)
+
             self.converter.add_relative(rel_pos[0], rel_pos[1], rel_pos[2])
-            self.x.append(position[0][0])
-            self.y.append(position[0][1])
 
             sonar = np.array([[sonar]])
+
 
             return {
                 "rgb": np.concatenate(rgb, axis=2),
@@ -259,7 +292,8 @@ class PepperPlaybackEnv(habitat.RLEnv):
                 "position": np.stack(position),
                 "rotation": np.stack(rotation),
                 "action": action,
-                'gps_compass': rel_pos
+                'gps_compass': rel_pos,
+                "gps_compass_relative": rel_pos_step
             }
         else:
             return {
