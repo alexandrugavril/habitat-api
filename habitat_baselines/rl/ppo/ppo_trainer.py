@@ -43,6 +43,7 @@ class PPOTrainer(BaseRLTrainer):
         self.envs = None
         if config is not None:
             logger.info(f"config: {config}")
+        self._train = True
 
     def _setup_actor_critic_agent(self, ppo_cfg: Config, train: bool=True) \
         -> None:

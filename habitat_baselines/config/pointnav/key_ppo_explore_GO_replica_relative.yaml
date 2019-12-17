@@ -19,13 +19,13 @@ CHECKPOINT_INTERVAL: 50
 COMMIT: "{commit_hash}"
 
 TRANSFORM:
-  ENABLED: True
+  ENABLED: False
   min_scale: 1.
   max_scale: 1.2
 TRANSFORM_RGB:
-  ENABLED: True
+  ENABLED: False
 TRANSFORM_DEPTH:
-  ENABLED: True
+  ENABLED: False
   std_noise: 0.2
   depth_min_th: 0.04
   depth_max_th: 0.8

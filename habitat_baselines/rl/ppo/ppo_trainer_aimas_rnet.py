@@ -111,6 +111,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         self.actor_critic.to(self.device)
         self.actor_critic.map_aux_to_obs = self.map_aux_to_obs
 
+        for aux in self.actor_critic.net.aux_models.values():
+            if getattr(aux, "master", False):
+                aux.set_trainer(self)
+
         self.agent = AuxPPO(
             actor_critic=self.actor_critic,
             clip_param=ppo_cfg.clip_param,
@@ -277,11 +281,12 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             next_value, ppo_cfg.use_gae, ppo_cfg.gamma, ppo_cfg.tau
         )
 
-        if not self.skip_train_ppo_without_rtrain or self.r_policy.is_trained:
+        if self._train and (not self.skip_train_ppo_without_rtrain or
+                            self.r_policy.is_trained):
             value_loss, action_loss, dist_entropy, aux_loss = \
                 self.agent.update(rollouts)
         else:
-            value_loss, action_loss, dist_entropy, aux_loss = (0, 0, 0, 0)
+            value_loss, action_loss, dist_entropy, aux_loss = (0, 0, 0, {})
 
         rollouts.after_update()
 
@@ -327,6 +332,13 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         if not os.path.isdir(self.config.CHECKPOINT_FOLDER):
             os.makedirs(self.config.CHECKPOINT_FOLDER)
         self._setup_actor_critic_agent(ppo_cfg, train=True)
+
+        if self.config.PRETRAINED_CHECKPOINT_PATH:
+            ckpt_dict = self.load_checkpoint(
+                self.config.PRETRAINED_CHECKPOINT_PATH, map_location="cpu"
+            )
+            self.agent.load_state_dict(ckpt_dict["state_dict"], strict=False)
+
         logger.info(
             "agent number of parameters: {}".format(
                 sum(param.numel() for param in self.agent.parameters())
@@ -553,6 +565,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                                                    self.envs.action_spaces[0].n,
                                             device=self.device)
                                     for k in aux_models.keys()})
+        num_steps = torch.zeros(self.envs.num_envs, 1,  device=self.device)
 
         # Config aux models for eval per item in batch
         for k, maux in aux_models.items():
@@ -658,11 +671,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     if other_losses[k] is None:
                         other_losses[k] = loss
                     else:
-                        other_losses[k] += loss
+                        other_losses[k] += loss.unsqueeze(1)
                     if len(prev_actions) == 1:
                         other_losses_action[k][0, prev_actions.item()] += \
                             loss.item()
-
 
                 if plot_pos >= 0:
                     prev_true_pos.append(batch["gps_compass_start"][
@@ -685,7 +697,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                         plt.waitforbuttonpress()
                         plt.close()
 
-            num_frames += 1
+            num_steps += 1
             outputs = self.envs.step([a[0].item() for a in actions])
 
             observations, rewards, dones, infos = [
@@ -753,14 +765,15 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     episode_stats["map_seen"] = seen_factor[i]
 
                     for k, v in other_losses.items():
-                        episode_stats[k] = v[i].item() / num_frames
-                        print("Loss:", k, episode_stats[k])
-                        print("Action:", k, other_losses_action[k] / num_frames)
+                        episode_stats[k] = v[i].item() / num_steps[i].item()
+                        # print("Loss:", k, episode_stats[k])
+                        # print("Action:", k, other_losses_action[k] / num_frames)
 
                         other_losses_action[k][i].fill_(0)
                         other_losses[k][i] = 0
-                    num_frames = 0
-                    print("-" * 100)
+                    # print("-" * 100)
+
+                    num_steps[i] = 0
 
                     current_episode_reward[i] = 0
                     current_episode_go_reward[i] = 0
@@ -771,6 +784,9 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                             current_episodes[i].episode_id,
                         )
                     ] = episode_stats
+
+                    print(f"Episode {len(stats_episodes)} stats:",
+                          episode_stats)
 
                     stats_episodes_scenes[current_episodes[i].scene_id] += 1
 

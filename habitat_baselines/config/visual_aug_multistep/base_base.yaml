@@ -17,7 +17,6 @@ NUM_UPDATES: 5000 # So as to train on 15 Mil frames
 HARD_NUM_UPDATES: 2500
 LOG_INTERVAL: 10
 CHECKPOINT_INTERVAL: 50
-PRETRAINED_CHECKPOINT_PATH: ""
 COMMIT: "{commit_hash}"
 
 BATCH_INPUT: &batch 2
@@ -34,16 +33,11 @@ TRANSFORM_DEPTH:
 TASK_CONFIG:
   TASK:
     SUCCESS_IF_IN_VIEW: False
-    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR', 'GPS_COMPASS_SENSOR',
-              'GPS_COMPASS_RELATIVE_SENSOR']
-              #'GPS_COMPASS_START_SENSOR', "EMPTY_SENSOR"]
+    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR', 'GPS_COMPASS_SENSOR', 'GPS_COMPASS_RELATIVE_SENSOR']
     WITH_TARGET_ENCODING: False
-    GOAL_SENSOR_UUID: gps_compass_relative
+    GOAL_SENSOR_UUID: pointgoal_with_gps_compass
     POSSIBLE_ACTIONS: ['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT']
 #    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
-    GPS_COMPASS_RELATIVE_SENSOR:
-      RELATIVE_STEP: 5
-
   SIMULATOR:
     NOISE_MULTIPLIER: 0.0
     HABITAT_SIM_V0:
@@ -81,15 +75,17 @@ RL:
       num_recurrent_layers: 1
       rnn_type: "GRU"
       fixed_distribution: [0.8, 0.1, 0.1]
-      type: "ExploreNavBaselinePolicyAux" #"ExploreNavBaselinePolicyAux"
-      aux: ["rel_pos", "action"] #, "rel_start_pos_reg", "adv_domain_adaptation"] # "sonar",]
-      map_aux_to_obs: [] #["rel_start_pos_reg", "empty_sensor"]]
+      type: "ExploreNavBaselinePolicyAux"
+      aux: ["rel_pos", "action"] #
+      map_aux_to_obs: []
       SonarPredictor:
         loss_coeff: 1.
       RelativePositionPredictor:
+        loss_coeff: 10.
         target: "gps_compass_relative"
 
-    visual_encoder: SimpleCNN
+
+    visual_encoder: SimpleCNNRelu
     visual_encoder_dropout: 0.0
     channel_scale: 1
     # ppo params
