@@ -39,7 +39,7 @@ def add_relative(c_pos, n_pos):
 
 
 class RelPosToGlobal:
-    def __init__(self, num_steps = sys.maxint):
+    def __init__(self):
         self.position = np.array([0, 0, 0], dtype=np.float)
         self.orientation = 0
         self.x = []
@@ -85,10 +85,14 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
         self.x = []
         self.y = []
+
+        self.x_old = []
+        self.y_old = []
         # Initialize ROS Bridge
         self._pepper_config = config.PEPPER
 
-        self._all_ep_data = self.load_episode(self._pepper_config.EpisodePath)
+        self._accum_rel_pos_step = config.TASK_CONFIG.TASK. \
+            GPS_COMPASS_RELATIVE_SENSOR.RELATIVE_STEP
 
         self._c_step = 0
 
@@ -101,21 +105,44 @@ class PepperPlaybackEnv(habitat.RLEnv):
         self._norm_depth = sim_config.DEPTH_SENSOR.NORMALIZE_DEPTH
         self._depth_batch_size = sim_config.RGB_SENSOR.BATCH
 
-
         self.goal_sensor_uuid = config.TASK_CONFIG.TASK.GOAL_SENSOR_UUID
-        self._goal_sensor_dim = config.TASK_CONFIG.TASK.\
+        self._goal_sensor_dim = config.TASK_CONFIG.TASK. \
             POINTGOAL_WITH_GPS_COMPASS_SENSOR.DIMENSIONALITY
 
-        self._accum_rel_pos_step = config.TASK_CONFIG.TASK. \
-            GPS_COMPASS_RELATIVE_SENSOR.RELATIVE_STEP
-
-
+        self._all_ep_data = self.load_episode(self._pepper_config.EpisodePath)
         self._collected_positions = set()
 
         self.init_obs_space()
         self.init_action_space()
 
         #super().__init__(self._core_env_config, dataset)
+
+    def convert_position_to_relative(self, c_data, prev_pos, prev_heading):
+        agent_position = c_data['position'][[0, 2, 1]]
+        agent_rotation = quaternion.from_euler_angles(
+            np.roll(c_data['rotation'], 1))
+        relative_pos = quaternion_rotate_vector(
+            agent_rotation, agent_position - prev_pos
+        )
+
+        heading = np.array([_quat_to_xy_heading(
+            agent_rotation
+        )])
+
+        relative_heading = heading - prev_heading
+
+        if np.abs(relative_heading) > np.pi:
+            relative_heading = np.mod(relative_heading, 2 * np.pi *
+                                      -np.sign(relative_heading))
+        pos = np.array(
+            [relative_pos[0], relative_pos[2]], dtype=np.float32
+        )
+
+        prev_pos = agent_position
+        prev_heading = heading
+
+        return np.concatenate([pos, relative_heading]), prev_pos, prev_heading
+
 
     def load_episode(self, path):
         import os
@@ -137,32 +164,27 @@ class PepperPlaybackEnv(habitat.RLEnv):
             prev_pos = np.array([0, 0, 0])
             prev_heading = np.array([0])
 
-            for c_data in ep:
+            for i in range(len(ep)):
+                c_data = ep[i]
+                prev_idx = max(i - self._accum_rel_pos_step, 0)
+                p_data = ep[prev_idx]
+
+                p_rot = quaternion.from_euler_angles(
+                    np.roll(p_data['rotation'], 1))
+                p_heading = np.array([_quat_to_xy_heading(
+                    p_rot
+                )])
+                p_pos = p_data['position'][[0, 2, 1]]
+
                 if 'position' in c_data:
-                    agent_position = c_data['position'][[0, 2, 1]]
-                    agent_rotation = quaternion.from_euler_angles(
-                        np.roll(c_data['rotation'], 1))
-                    relative_pos = quaternion_rotate_vector(
-                        agent_rotation, agent_position - prev_pos
+                    c_data['rel_position'], prev_pos, prev_heading = \
+                    self.convert_position_to_relative(
+                        c_data, prev_pos, prev_heading
                     )
-
-                    heading = np.array([_quat_to_xy_heading(
-                        agent_rotation
-                    )])
-
-                    relative_heading = heading - prev_heading
-
-                    if np.abs(relative_heading) > np.pi:
-                        relative_heading = np.mod(relative_heading, 2 * np.pi *
-                                                  -np.sign(relative_heading))
-                    pos = np.array(
-                        [relative_pos[0], relative_pos[2]], dtype=np.float32
+                    c_data['rel_position_prev'], _, _ = \
+                    self.convert_position_to_relative(
+                        c_data, p_pos, p_heading
                     )
-
-                    prev_pos = agent_position
-                    prev_heading = heading
-
-                    c_data['rel_position'] = np.concatenate([pos, relative_heading])
 
         return data
 
@@ -259,11 +281,8 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
     def get_obs(self):
         assert self._c_step + self._rgb_batch_size < len(self._ep_data)
-
-        rel_s_idx = max(self._c_step - self._accum_rel_pos_step, 0)
-        rel_s_pos = self._ep_data[rel_s_idx][-1]['rel_position']
-
-        data_batch = self._ep_data[self._c_step: self._c_step + self._rgb_batch_size]
+        data_batch = self._ep_data[self._c_step: self._c_step +
+                                                 self._rgb_batch_size]
 
         rgb = [self.resize_rgb(c_data['rgb']) for c_data in data_batch]
         depth = [self.resize_depth(c_data['depth']) for c_data in data_batch]
@@ -275,14 +294,17 @@ class PepperPlaybackEnv(habitat.RLEnv):
             action = data_batch[-1]['action']
 
             rel_pos = data_batch[-1]['rel_position']
-
-            print(rel_s_idx)
-            print(rel_s_pos)
-            print(rel_pos)
+            rel_pos_step = data_batch[-1]['rel_position_prev']
 
             self.converter.add_relative(rel_pos[0], rel_pos[1], rel_pos[2])
+            self.x.append(rel_pos[0])
+            self.y.append(rel_pos[1])
+
+            self.x_old.append(rel_pos_step[0])
+            self.y_old.append(rel_pos_step[1])
 
             sonar = np.array([[sonar]])
+
 
 
             return {
@@ -292,7 +314,7 @@ class PepperPlaybackEnv(habitat.RLEnv):
                 "position": np.stack(position),
                 "rotation": np.stack(rotation),
                 "action": action,
-                'gps_compass': rel_pos,
+                #'gps_compass': rel_pos,
                 "gps_compass_relative": rel_pos_step
             }
         else:
@@ -300,9 +322,6 @@ class PepperPlaybackEnv(habitat.RLEnv):
                 'rgb': np.concatenate(rgb, axis=2),
                 "depth": np.concatenate(depth, axis=2)
             }
-
-
-
 
     def reset(self):
         print("Resetting ", self.ep.episode_id)
