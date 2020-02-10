@@ -19,6 +19,7 @@ import base64
 import cv2
 import pickle
 import sys
+import gzip
 
 from habitat import Config, Env
 from habitat.core.dataset import Dataset, Episode
@@ -143,7 +144,6 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
         return np.concatenate([pos, relative_heading]), prev_pos, prev_heading
 
-
     def load_episode(self, path):
         import os
 
@@ -153,7 +153,12 @@ class PepperPlaybackEnv(habitat.RLEnv):
         for file in files:
             f_path = os.path.join(path, file)
             print("Loading:", f_path)
-            new_data = pickle.load(open(f_path, "rb"), encoding="latin1")
+            if f_path.endswith("pz"):
+                new_data = pickle.load(gzip.open(f_path, "rb"),
+                                       encoding="latin1")
+            else:
+                new_data = pickle.load(open(f_path, "rb"), encoding="latin1")
+
             data.append(new_data)
             total_data += len(new_data)
         print("Total frames:", total_data)
@@ -168,6 +173,22 @@ class PepperPlaybackEnv(habitat.RLEnv):
                 c_data = ep[i]
                 prev_idx = max(i - self._accum_rel_pos_step, 0)
                 p_data = ep[prev_idx]
+
+                if not hasattr(c_data, "rotation"):
+                    print(f"NO _rotation_ DATA for idx {prev_idx}")
+                    c_data['rotation'] = [0, 0, 0]
+
+                if not hasattr(c_data, "position"):
+                    print(f"NO _position_ DATA for idx {prev_idx}")
+                    c_data['position'] = np.array([0, 0, 0])
+
+                if not hasattr(c_data, "sonar"):
+                    print(f"NO _sonar_ DATA for idx {prev_idx}")
+                    c_data['sonar'] = 0.
+
+                if not hasattr(c_data, "action"):
+                    print(f"NO _action_ DATA for idx {prev_idx}")
+                    c_data['action'] = 0.
 
                 p_rot = quaternion.from_euler_angles(
                     np.roll(p_data['rotation'], 1))
@@ -219,7 +240,6 @@ class PepperPlaybackEnv(habitat.RLEnv):
             shape=(self._goal_sensor_dim,),
             dtype=np.float32,
         )
-
 
         gps_compass_space = spaces.Box(
             low=np.finfo(np.float32).min,
@@ -305,8 +325,6 @@ class PepperPlaybackEnv(habitat.RLEnv):
 
             sonar = np.array([[sonar]])
 
-
-
             return {
                 "rgb": np.concatenate(rgb, axis=2),
                 "depth": np.concatenate(depth, axis=2),
@@ -314,7 +332,7 @@ class PepperPlaybackEnv(habitat.RLEnv):
                 "position": np.stack(position),
                 "rotation": np.stack(rotation),
                 "action": action,
-                #'gps_compass': rel_pos,
+                'gps_compass': rel_pos,
                 "gps_compass_relative": rel_pos_step
             }
         else:

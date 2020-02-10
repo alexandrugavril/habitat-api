@@ -20,6 +20,9 @@ CHECKPOINT_INTERVAL: 50
 PRETRAINED_CHECKPOINT_PATH: ""
 COMMIT: "{commit_hash}"
 
+PEPPER:
+  EpisodePath: "dataset_pepper_images/"
+
 BATCH_INPUT: &batch 2
 
 TRANSFORM_RGB:
@@ -82,18 +85,24 @@ RL:
       rnn_type: "GRU"
       fixed_distribution: [0.8, 0.1, 0.1]
       type: "ExploreNavBaselinePolicyAux" #"ExploreNavBaselinePolicyAux"
-      aux: ["rel_pos", "action"] #, "rel_start_pos_reg", "adv_domain_adaptation"] # "sonar",]
+      aux: ["rel_pos", "action", "adv_domain_adaptation"] #, "rel_start_pos_reg",] # "sonar",]
       map_aux_to_obs: [] #["rel_start_pos_reg", "empty_sensor"]]
       SonarPredictor:
         loss_coeff: 1.
       RelativePositionPredictor:
         target: "gps_compass_relative"
+      AdversarialDomainAdaptation:
+        log_freq: 5
+        env_memory_size: 6000.
+        real_memory_size: 6000.
+        optim_step_d: 1
+        optim_step_v: 1
 
-    visual_encoder: SimpleCNN
+    visual_encoder: SimpleCNNRelu
     visual_encoder_dropout: 0.0
     channel_scale: 1
     # ppo params
-    clip_param: 0.1 # Episodic curiosity has some kind of decaying cliprange
+    clip_param: 0.2 # Episodic curiosity has some kind of decaying cliprange
     ppo_epoch: 4 #4
     num_mini_batch: 4 # They have 4? which is slower should be increase no_envs? which give  3/envs/batch
     value_loss_coef: 0.0 # 0.5

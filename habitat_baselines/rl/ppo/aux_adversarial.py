@@ -97,6 +97,7 @@ class AdversarialDomainAdaptation(nn.Module):
         observations = real_env.reset()
         real_mem.insert([observations[0]["rgb"], observations[0]["depth"]])
 
+        print(f"Loading {self.real_mem_size}  ROBOT observations ...")
         for i in range(self.real_mem_size):
             outputs = real_env.step([0])
 
@@ -104,6 +105,7 @@ class AdversarialDomainAdaptation(nn.Module):
                 list(x) for x in zip(*outputs)
             ]
             real_mem.insert([observations[0]["rgb"], observations[0]["depth"]])
+        print(f"Loaded {self.real_mem_size} observations from ROBOT dataset")
 
     def set_trainer(self, parent):
         self.parent = parent
@@ -140,7 +142,7 @@ class AdversarialDomainAdaptation(nn.Module):
         return out
 
     def train_adaptation(self, epochs):
-
+        trainer = self.parent
         env_memory = self.memory_env
         real_memory = self.memory_real
         batch_size = self.batch_size
@@ -153,6 +155,10 @@ class AdversarialDomainAdaptation(nn.Module):
         print(f"Train adaptation, for {epochs} epochs;\n\t"
               f"Num batches from env: {num_batches_env}\n\t"
               f"Num batches from real: {num_batches_real}\n\t")
+
+        count_checkpoints = 0
+        trainer.save_checkpoint(f"ckpt.{count_checkpoints}.pth")
+        count_checkpoints += 1
 
         avg_len = 30
         accs = {
@@ -220,6 +226,8 @@ class AdversarialDomainAdaptation(nn.Module):
                 if batch_count % log_freq == 0:
                     print_list = [(k, np.mean(v)) for k, v in accs.items()]
                     print(f"Loss: {print_list} ")
+                    trainer.save_checkpoint(f"ckpt.{count_checkpoints}.pth")
+                    count_checkpoints += 1
 
     def set_per_element_loss(self):
         self.criterion = nn.CrossEntropyLoss(reduction="none")

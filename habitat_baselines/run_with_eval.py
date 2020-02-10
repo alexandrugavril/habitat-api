@@ -11,8 +11,6 @@ import datetime
 from typing import List
 import yaml
 import os
-import sys
-import time
 
 import numpy as np
 import torch
@@ -27,17 +25,8 @@ CFG_RESULTS_PREFIX = "results_prefix"
 CFG_COMMIT_HASH = "commit_hash"
 CFG_GPU = "gpu_id"
 
-PEPPER_EVAL_ARGS = [
-    'TASK_CONFIG.DATASET.TYPE', 'PepperRobot', 'NUM_PROCESSES', '1',
-    'ENV_NAME', 'PepperPlaybackEnv', 'TEST_EPISODE_COUNT', '15',
-    'VIDEO_OPTION', '[]', 'PEPPER.EpisodePath',
-    'dataset_pepper_move/'
-]
-
 
 def main():
-    all_args = sys.argv
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--run-type",
@@ -59,13 +48,6 @@ def main():
         help="GPU ID to use for bot training and test",
     )
     parser.add_argument(
-        "--wait-time",
-        type=int,
-        default=0,
-        required=False,
-        help="Sleep time before start",
-    )
-    parser.add_argument(
         "--experiment",
         type=str,
         default=None,
@@ -80,12 +62,6 @@ def main():
         help="Other config regex patterns (list of key value patterns)",
     )
     parser.add_argument(
-        "--with-eval",
-        action='store_true',
-        default=False,
-        help="Start eval as well"
-    )
-    parser.add_argument(
         "opts",
         default=None,
         nargs=argparse.REMAINDER,
@@ -93,7 +69,7 @@ def main():
     )
 
     args = parser.parse_args()
-    run_exp(all_args, **vars(args))
+    run_exp(**vars(args))
 
 
 def get_git_revision_hash() -> str:
@@ -117,9 +93,8 @@ def preprocess_config(file_content: List[str], change_contet: dict) -> \
     return new_file
 
 
-def run_exp(all_args: List[str], exp_config: str, run_type: str, opts=None,
-            experiment: str = None, gpu_id: int = 0, other_patterns=None,
-            with_eval: bool = False, wait_time: int = 0) \
+def run_exp(exp_config: str, run_type: str, opts=None,
+            experiment: str = None, gpu_id: int = 0, other_patterns=None) \
     -> None:
     r"""Runs experiment given mode and config
 
@@ -131,9 +106,6 @@ def run_exp(all_args: List[str], exp_config: str, run_type: str, opts=None,
     Returns:
         None.
     """
-    if wait_time > 0:
-        time.sleep(wait_time)
-
     if run_type == "train":
         replace_config = dict()
 
@@ -179,7 +151,7 @@ def run_exp(all_args: List[str], exp_config: str, run_type: str, opts=None,
 
         # Read new generated config
         exp_config = new_cfg
-    print(exp_config, "test", opts)
+
     config = get_config(exp_config, opts)
 
     # Random seed
@@ -193,18 +165,6 @@ def run_exp(all_args: List[str], exp_config: str, run_type: str, opts=None,
     trainer_init = baseline_registry.get_trainer(config.TRAINER_NAME)
     assert trainer_init is not None, f"{config.TRAINER_NAME} is not supported"
     trainer = trainer_init(config)
-
-    # Start eval mode in background as well - HACKY
-    if with_eval:
-        eval_out_file = open(os.path.join(path, "eval_path.out"), "w")
-        # change exp_config
-        all_args[all_args.index("--exp-config") + 1] = exp_config
-        all_args[all_args.index("--run-type") + 1] = "eval"
-        all_args.pop(all_args.index("--with-eval"))
-        all_args += ["--wait-time", "30"]
-
-        subprocess.Popen(["python"] + all_args + PEPPER_EVAL_ARGS,
-                         stdout=eval_out_file, stderr=eval_out_file)
 
     if run_type == "train":
         trainer.train()

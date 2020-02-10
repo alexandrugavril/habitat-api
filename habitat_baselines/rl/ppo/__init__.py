@@ -9,6 +9,7 @@ from habitat_baselines.rl.ppo.ppo import PPO
 from habitat_baselines.rl.models.simple_cnn import SimpleCNN
 from habitat_baselines.rl.models.simple_cnn_with_resnet import SimpleCNNResnet
 from habitat_baselines.rl.models.simple_cnn_relu import SimpleCNNRelu
+from habitat_baselines.rl.models.simple_cnn_norm import SimpleCNNNorm
 
 from habitat_baselines.rl.ppo.aux_relative_position import RelativePositionPredictor
 from habitat_baselines.rl.ppo.aux_sonar import SonarPredictor
@@ -23,6 +24,7 @@ VISUAL_ENCODER_MODELS = dict({
     "SimpleCNN": SimpleCNN,
     "SimpleCNNRelu": SimpleCNNRelu,
     "SimpleCNNResnet": SimpleCNNResnet,
+    "SimpleCNNNorm": SimpleCNNNorm,
 })
 
 AUX_CLASSES = dict({
