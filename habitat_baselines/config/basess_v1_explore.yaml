@@ -56,7 +56,7 @@ RL:
   COLLISION_REWARD_ENABLED: False
   SUCCESS_REWARD: 1.
   COLLISION_REWARD: -0.01
-  COLLISION_DISTANCE: 0.3
+  COLLISION_DISTANCE: 0.0
   PPO:
     actor_critic:
       type: "ExploreNavBaselinePolicyAux"
