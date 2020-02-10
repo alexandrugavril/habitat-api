@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 
+r"""
+Modifications from https://github.com/facebookresearch/habitat-api
+
 # Copyright (c) Facebook, Inc. and its affiliates.
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+Trainer class for PPO algorithm
+Paper: https://arxiv.org/abs/1707.06347.
+"""
+
 import os
 import time
 from collections import deque
-from typing import Dict, List
+from typing import List
 import cv2
 import matplotlib.pyplot as plt
 
@@ -33,15 +40,16 @@ from habitat_baselines.common.utils import (
 from habitat_baselines.rl.ppo.aux_ppo import AuxPPO
 from habitat_baselines.rl.ppo.aimas_reachability_policy import ExploreNavBaselinePolicy
 from habitat_baselines.rl.ppo.aimas_reachability_policy_aux import ExploreNavBaselinePolicyAux
-from habitat_baselines.rl.ppo.aimas_reachability_policy_aux_recurrentin import ExploreNavBaselinePolicyAuxRecurrentin
+from habitat_baselines.rl.ppo.aimas_reachability_policy_aux_recurrentin import \
+    ExploreNavBaselinePolicyAuxRecurrentin
 from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer
 
 
 from habitat_baselines.rl.ppo.reachability_policy import ReachabilityPolicy
 
 
-np.set_printoptions(edgeitems=30, linewidth=100000,
-    formatter=dict(float=lambda x: "%.3g" % x))
+np.set_printoptions(edgeitems=30, linewidth=100000, formatter=dict(
+    float=lambda x: "%.3g" % x))
 
 
 ACTOR_CRITICS = dict({
@@ -51,11 +59,8 @@ ACTOR_CRITICS = dict({
 })
 
 
-@baseline_registry.register_trainer(name="ppoAimasReachability")
-class PPOTrainerReachabilityAimas(PPOTrainer):
-    r"""Trainer class for PPO algorithm
-    Paper: https://arxiv.org/abs/1707.06347.
-    """
+@baseline_registry.register_trainer(name="ppoAimasExplore")
+class PPOTrainerExploreAimas(PPOTrainer):
     def _setup_actor_critic_agent(self, ppo_cfg: Config, train: bool=True) -> None:
         r"""Sets up actor critic and agent for PPO.
 
@@ -67,9 +72,13 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         """
         cfg = self.config
 
+        self._live_view_env = cfg.LIVE_VIEW_ENV
+
         # Get object index
         logger.add_filehandler(cfg.LOG_FILE)
+
         self.prev_pos = []
+
         # -- Reachability stuff
         # First pass add rollouts detector_features memory
         train_reachability = cfg.RL.REACHABILITY.train
@@ -80,7 +89,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                 self.envs.observation_spaces[0], device=self.device,
                 with_training=train_reachability,
                 tb_dir=cfg.TENSORBOARD_DIR
-            )
+            )  # type: torch.nn.Module
             self.r_policy.to(self.device)
         else:
             self.r_policy = None
@@ -126,7 +135,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             lr=ppo_cfg.lr,
             eps=ppo_cfg.eps,
             max_grad_norm=ppo_cfg.max_grad_norm,
-        )
+        )  # type: AuxPPO
 
     def _add_intrinsic_reward(self, batch: dict, actions: torch.tensor,
                               rewards: torch.tensor, masks: torch.tensor):
@@ -136,16 +145,12 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
         return rewards
 
-    def _collect_rollout_step(
-        self, rollouts, current_episode_reward, current_episode_go_reward,
-        episode_rewards, episode_go_rewards, episode_counts
-    ):
+    def _collect_rollout_step(self, rollouts, current_episode_reward, current_episode_ir_reward,
+        episode_rewards, episode_ir_rewards, episode_counts, info_data: dict):
         pth_time = 0.0
         env_time = 0.0
 
         t_sample_action = time.time()
-        # sample actions
-        prev_pos = self.prev_pos
 
         with torch.no_grad():
             step_observation = {
@@ -164,9 +169,6 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                 rollouts.prev_actions[rollouts.step],
                 rollouts.masks[rollouts.step],
             )
-            # TODO HACK HACK
-            # print("<:><:><:><:><:><:> YOU HAVE A HACKY HACK "* 100)
-            # aux_out["rel_start_pos_reg"] +=
 
         pth_time += time.time() - t_sample_action
 
@@ -176,48 +178,50 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         outputs = self.envs.step(send_actions)
         observations, rewards, dones, infos = [list(x) for x in zip(*outputs)]
 
-        # Check if env modified actions
+        # Check if env modified actions (This in case of PepperData  or fixed heuristic method)
         if "action" in observations[0]:
             for i in range(len(observations)):
                 actions[i] = int(observations[i].pop("action"))
 
-        #
-        # isc = 0
-        # has_depth2 = False
-        # rgb = observations[isc]["rgb"][:, :, -3:].cpu().numpy()
-        # depth = observations[isc]["depth"][:,:, -1].unsqueeze(2).cpu().numpy()
-        #
-        # if has_depth2:
-        #     depth2 = observations[isc]["depth2"].cpu().numpy()
-        # #
-        # # # loc
-        # # loc = observations[isc]["gps_compass_start"]
-        # # print("New loc:", loc, actions[isc].item())
-        # # print("Sonar", depth2.min())
-        # # prev_pos.append(loc)
-        # # all_pos = np.array(prev_pos)
-        # #
-        # img = cv2.resize(rgb, (0, 0), fx=2., fy=2)
-        # img = img.astype(np.uint8)
-        # img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-        # depth = cv2.resize(depth, (0, 0), fx=2., fy=2)
-        #
-        # if has_depth2:
-        #     depth2 = cv2.resize(depth2, (0, 0), fx=2., fy=2)
-        #     depth2 = depth2/2.5
-        #
-        # cv2.imshow("OBS", img)
-        # # cv2.imwrite(f"img_{int(time.time())}.jpg", img)
-        #
-        # cv2.imshow("Depth", depth)
-        # if has_depth2:
-        #     cv2.imshow("Depth2", depth2)
-        #
-        # cv2.waitKey(0)
-        # #
-        # plt.scatter(all_pos[:, 0], all_pos[:, 1])
-        # plt.show()
-        #
+        # Just for debugging
+        if self._live_view_env >= 0:
+            isc = self._live_view_env
+            has_depth2 = False
+            rgb = observations[isc]["rgb"][:, :, -3:].cpu().numpy()
+            depth = observations[isc]["depth"][:,:, -1].unsqueeze(2).cpu().numpy()
+
+            if has_depth2:
+                depth2 = observations[isc]["depth2"].cpu().numpy()
+
+            # # loc
+            # loc = observations[isc]["gps_compass_start"]
+            # print("New loc:", loc, actions[isc].item())
+            # print("Sonar", depth2.min())
+            # prev_pos.append(loc)
+            # all_pos = np.array(prev_pos)
+
+            img = cv2.resize(rgb, (0, 0), fx=2., fy=2)
+            img = img.astype(np.uint8)
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            depth = cv2.resize(depth, (0, 0), fx=2., fy=2)
+
+            if has_depth2:
+                depth2 = cv2.resize(depth2, (0, 0), fx=2., fy=2)
+                depth2 = depth2/2.5
+
+            cv2.imshow("OBS", img)
+            # cv2.imwrite(f"img_{int(time.time())}.jpg", img)
+
+            cv2.imshow("Depth", depth)
+
+            if has_depth2:
+                cv2.imshow("Depth2", depth2)
+
+            cv2.waitKey(0)
+
+            # plt.scatter(all_pos[:, 0], all_pos[:, 1])
+            # plt.show()
+
         env_time += time.time() - t_step_env
 
         t_update_stats = time.time()
@@ -229,12 +233,13 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             [[0.0] if done else [1.0] for done in dones], dtype=torch.float
         )
 
+        # Map any aux_out as observations
         map_values = self._get_mapping(observations, aux_out)
         batch = batch_obs_augment_aux(observations, map_values=map_values, masks=masks)
 
-        current_episode_go_reward += rewards
-        episode_go_rewards += (1 - masks) * current_episode_go_reward
-        current_episode_go_reward *= masks
+        current_episode_ir_reward += rewards
+        episode_ir_rewards += (1 - masks) * current_episode_ir_reward
+        current_episode_ir_reward *= masks
 
         # -- Add intrinsic Reward
         if self.only_intrinsic_reward:
@@ -247,6 +252,10 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         episode_counts += 1 - masks
         current_episode_reward *= masks
 
+        # Log other info from infos dict
+        for iii, info in enumerate(infos):
+            for k_info, v_info in info_data.items():
+                v_info[iii] += info[k_info]
 
         rollouts.insert(
             batch,
@@ -289,10 +298,8 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             next_value, ppo_cfg.use_gae, ppo_cfg.gamma, ppo_cfg.tau
         )
 
-        if self._train and (not self.skip_train_ppo_without_rtrain or
-                            self.r_policy.is_trained):
-            value_loss, action_loss, dist_entropy, aux_loss = \
-                self.agent.update(rollouts)
+        if self._train and (not self.skip_train_ppo_without_rtrain or self.r_policy.is_trained):
+            value_loss, action_loss, dist_entropy, aux_loss = self.agent.update(rollouts)
         else:
             value_loss, action_loss, dist_entropy, aux_loss = (0, 0, 0, {})
 
@@ -309,13 +316,11 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
     def add_new_based_on_cfg(self):
         # Add proximity sensor if COLLISION_REWARD_ENABLED &
         # COLLISION_DISTANCE > 0
-        if self.config.RL.COLLISION_REWARD_ENABLED and \
-            self.config.RL.COLLISION_DISTANCE > 0:
+        if self.config.RL.COLLISION_REWARD_ENABLED and self.config.RL.COLLISION_DISTANCE > 0:
             self.config.defrost()
             if "PROXIMITY_SENSOR" not in self.config.TASK_CONFIG.TASK.SENSORS:
                 self.config.TASK_CONFIG.TASK.SENSORS.append("PROXIMITY_SENSOR")
-                self.config.TASK_CONFIG.TASK.PROXIMITY_SENSOR\
-                    .MAX_DETECTION_RADIUS = \
+                self.config.TASK_CONFIG.TASK.PROXIMITY_SENSOR.MAX_DETECTION_RADIUS = \
                     self.config.RL.COLLISION_DISTANCE + 0.5
             self.config.freeze()
 
@@ -325,6 +330,7 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         Returns:
             None
         """
+
         self.add_new_based_on_cfg()
 
         self.envs = construct_envs(
@@ -376,14 +382,19 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
         batch = None
         observations = None
 
-        episode_rewards = torch.zeros(self.envs.num_envs, 1)
-        episode_go_rewards = torch.zeros(self.envs.num_envs, 1)  # Grid oracle rewars
-        episode_counts = torch.zeros(self.envs.num_envs, 1)
-        current_episode_reward = torch.zeros(self.envs.num_envs, 1)
-        current_episode_go_reward = torch.zeros(self.envs.num_envs, 1) # Grid oracle rewars
-        window_episode_reward = deque(maxlen=ppo_cfg.reward_window_size)
-        window_episode_go_reward = deque(maxlen=ppo_cfg.reward_window_size)
-        window_episode_counts = deque(maxlen=ppo_cfg.reward_window_size)
+        info_data_keys = ["discovered", "collisions_wall", "collisions_prox"]
+
+        log_data_keys = ["episode_rewards", "episode_go_rewards", "episode_counts",
+                         "current_episode_reward", "current_episode_go_reward"] + info_data_keys
+
+        log_data = dict({k: torch.zeros(self.envs.num_envs, 1) for k in log_data_keys})
+        info_data = dict({k: log_data[k] for k in info_data_keys})
+
+        win_keys = log_data_keys
+        win_keys.pop(win_keys.index("current_episode_reward"))
+        win_keys.pop(win_keys.index("current_episode_go_reward"))
+
+        windows = dict({k: deque(maxlen=ppo_cfg.reward_window_size) for k in log_data.keys()})
 
         t_start = time.time()
         env_time = 0
@@ -396,25 +407,31 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
             lr_lambda=lambda x: linear_decay(x, self.config.NUM_UPDATES),
         )
 
-        train_steps = min(self.config.NUM_UPDATES,
-                          self.config.HARD_NUM_UPDATES)
+        train_steps = min(self.config.NUM_UPDATES, self.config.HARD_NUM_UPDATES)
+
+        log_interval = self.config.LOG_INTERVAL
+        num_updates = self.config.NUM_UPDATES
+        agent = self.agent
+        ckpt_interval = self.config.CHECKPOINT_INTERVAL
+
         with TensorboardWriter(
             self.config.TENSORBOARD_DIR, flush_secs=self.flush_secs
         ) as writer:
             for update in range(train_steps):
                 if ppo_cfg.use_linear_clip_decay:
-                    self.agent.clip_param = ppo_cfg.clip_param * linear_decay(
-                        update, self.config.NUM_UPDATES
+                    agent.clip_param = ppo_cfg.clip_param * linear_decay(
+                        update, num_updates
                     )
 
                 for step in range(ppo_cfg.num_steps):
                     delta_pth_time, delta_env_time, delta_steps = self._collect_rollout_step(
                         rollouts,
-                        current_episode_reward,
-                        current_episode_go_reward,
-                        episode_rewards,
-                        episode_go_rewards,
-                        episode_counts,
+                        log_data["current_episode_reward"],
+                        log_data["current_episode_go_reward"],
+                        log_data["episode_rewards"],
+                        log_data["episode_go_rewards"],
+                        log_data["episode_counts"],
+                        info_data
                     )
                     pth_time += delta_pth_time
                     env_time += delta_env_time
@@ -429,19 +446,17 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
 
                 pth_time += delta_pth_time
 
-                window_episode_reward.append(episode_rewards.clone())
-                window_episode_go_reward.append(episode_go_rewards.clone())
-                window_episode_counts.append(episode_counts.clone())
+                # ==================================================================================
+                # -- Log data for window averaging
+                for k, v in windows.items():
+                    windows[k].append(log_data[k].clone())
 
                 value_names = ["value", "policy", "entropy"] + list(
                     aux_loss.keys())
                 losses = [value_loss, action_loss, dist_entropy] + list(
                     aux_loss.values())
 
-                stats = zip(
-                    ["count", "reward", "reward_go"],
-                    [window_episode_counts, window_episode_reward, window_episode_go_reward],
-                )
+                stats = zip(list(windows.keys()), list(windows.values()))
                 deltas = {
                     k: (
                         (v[-1] - v[0]).sum().item()
@@ -450,24 +465,19 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                     )
                     for k, v in stats
                 }
-                deltas["count"] = max(deltas["count"], 1.0)
+                act_ep = deltas["episode_counts"]
+                counts = max(act_ep, 1.0)
+                deltas["episode_counts"] *= counts
 
-                writer.add_scalar(
-                    "reward", deltas["reward"] / deltas["count"], count_steps
-                )
+                for k, v in deltas.items():
+                    deltas[k] = v / counts
+                    writer.add_scalar(k, deltas[k], count_steps)
 
-                writer.add_scalar(
-                    "reward_go", deltas["reward_go"] / deltas["count"], count_steps
-                )
-
-                writer.add_scalars(
-                    "losses",
-                    {k: l for l, k in zip(losses, value_names)},
-                    count_steps,
-                )
+                writer.add_scalars("losses", {k: l for l, k in zip(losses, value_names)},
+                                   count_steps)
 
                 # log stats
-                if update > 0 and update % self.config.LOG_INTERVAL == 0:
+                if update > 0 and update % log_interval == 0:
                     logger.info(
                         "update: {}\tfps: {:.3f}\t".format(
                             update, count_steps / (time.time() - t_start)
@@ -481,32 +491,21 @@ class PPOTrainerReachabilityAimas(PPOTrainer):
                         )
                     )
 
-                    window_rewards = (
-                        window_episode_reward[-1] - window_episode_reward[0]
-                    ).sum()
-                    window_go_rewards = (
-                        window_episode_go_reward[-1] - window_episode_go_reward[0]
-                    ).sum()
-                    window_counts = (
-                        window_episode_counts[-1] - window_episode_counts[0]
-                    ).sum()
+                    if act_ep > 0:
+                        log_txt = f"Average window size {len(windows['episode_counts'])}"
+                        for k, v in deltas.items():
+                            log_txt += f" | {k}: {v:.3f}"
 
-                    if window_counts > 0:
-                        logger.info(
-                            "Average window size {} reward: {:3f} reward_go: {:3f}".format(
-                                len(window_episode_reward),
-                                (window_rewards / window_counts).item(),
-                                (window_go_rewards / window_counts).item(),
-                            )
-                        )
+                        logger.info(log_txt)
                         logger.info(
                             f"Aux losses: {list(zip(value_names, losses))}"
                             )
                     else:
                         logger.info("No episodes finish in current window")
+                # ==================================================================================
 
                 # checkpoint model
-                if update % self.config.CHECKPOINT_INTERVAL == 0:
+                if update % ckpt_interval == 0:
                     self.save_checkpoint(f"ckpt.{count_checkpoints}.pth")
                     count_checkpoints += 1
 

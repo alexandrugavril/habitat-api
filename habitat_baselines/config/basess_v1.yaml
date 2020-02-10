@@ -1,4 +1,4 @@
-TRAINER_NAME: "ppoAimasReachability"
+TRAINER_NAME: "ppoAimasExplore"
 ENV_NAME: "NavRLExploration"
 SIMULATOR_GPU_ID: {gpu_id}
 TORCH_GPU_ID: {gpu_id}
@@ -12,6 +12,8 @@ SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR", "DEPTH2_SENSOR"]
 NUM_UPDATES: 10000 # So as to train on 15 Mil frames
 HARD_NUM_UPDATES: 5000
 COMMIT: "{commit_hash}"
+
+LIVE_VIEW_ENV: -1 # > index of env to view
 
 BATCH_INPUT: &batch 2
 
@@ -50,9 +52,9 @@ RL:
   DEPTH_BLOCK_VIEW_FACTOR: 0.15 # ___AUG____
   DEPTH_BLOCK_MIN_UNBLOCK: 0.1 # ___AUG____
 
-  SLACK_REWARD: 0.00
+  SLACK_REWARD: -0.01
   COLLISION_REWARD_ENABLED: False
-  SUCCESS_REWARD: 1.
+  SUCCESS_REWARD: 10.
   COLLISION_REWARD: -0.1
   COLLISION_DISTANCE: 0.3
   PPO:
@@ -66,7 +68,6 @@ RL:
       RelativePositionPredictor:
         loss_coeff: 10.
         target: "gps_compass_relative"
-
 
     visual_encoder: SimpleCNNRelu
     visual_encoder_dropout: 0.0

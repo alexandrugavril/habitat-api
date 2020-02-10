@@ -42,11 +42,12 @@ _C.CHECKPOINT_INTERVAL = 50
 _C.COMMIT = ""
 _C.EVAL_MODE = False
 _C.PRETRAINED_CHECKPOINT_PATH = ""
+_C.LIVE_VIEW_ENV = -1  # Index of env to show obs from
 
 # -----------------------------------------------------------------------------
 # IMAGE TRANSFORM
 # -----------------------------------------------------------------------------
-_C.BATCH_INPUT = 1
+_C.BATCH_INPUT = 2
 
 _C.TRANSFORM = CN()
 _C.TRANSFORM.ENABLED = False

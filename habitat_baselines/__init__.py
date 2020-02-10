@@ -8,6 +8,8 @@ from habitat_baselines.common.base_trainer import BaseRLTrainer, BaseTrainer
 from habitat_baselines.rl.ppo.ppo_trainer import PPOTrainer, RolloutStorage
 from habitat_baselines.rl.ppo.ppo_trainer_aimas import PPOTrainerAimas
 from habitat_baselines.rl.ppo.ppo_trainer_aimas_rnet import PPOTrainerReachabilityAimas
+from habitat_baselines.rl.ppo.ppo_trainer_aimas_explore import \
+    PPOTrainerExploreAimas
 
 __all__ = ["BaseTrainer", "BaseRLTrainer", "PPOTrainer", "RolloutStorage",
            "PPOTrainerAimas", "PPOTrainerReachabilityAimas"]
