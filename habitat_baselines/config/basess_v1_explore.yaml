@@ -1,0 +1,78 @@
+TRAINER_NAME: "ppoAimasExplore"
+ENV_NAME: "NavRLExploration"
+SIMULATOR_GPU_ID: {gpu_id}
+TORCH_GPU_ID: {gpu_id}
+VIDEO_OPTION: []
+TENSORBOARD_DIR: "results/{results_prefix}/explore_GO_test/tb"
+VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
+EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
+CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
+LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
+SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR", "DEPTH2_SENSOR"]
+NUM_UPDATES: 10000 # So as to train on 15 Mil frames
+HARD_NUM_UPDATES: 5000
+COMMIT: "{commit_hash}"
+
+LIVE_VIEW_ENV: -1 # > index of env to view
+
+BATCH_INPUT: &batch 2
+
+TRANSFORM_RGB:
+  ENABLED: False # ___AUG____
+TRANSFORM_DEPTH:
+  ENABLED: False # ___AUG____
+  std_noise: 0.2
+  depth_min_th: 0.04
+  depth_max_th: 0.8
+  noise_interval: 0.04
+
+TASK_CONFIG:
+  TASK:
+    SUCCESS_IF_IN_VIEW: False
+    SENSORS: ['POINTGOAL_WITH_GPS_COMPASS_SENSOR', 'GPS_COMPASS_SENSOR', 'GPS_COMPASS_RELATIVE_SENSOR']
+    WITH_TARGET_ENCODING: False
+    GOAL_SENSOR_UUID: pointgoal_with_gps_compass
+    POSSIBLE_ACTIONS: ['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT']
+#    POSSIBLE_ACTIONS: ['NOISY_MOVE_FORWARD', 'NOISY_TURN_LEFT', 'NOISY_TURN_RIGHT']
+  SIMULATOR:
+    NOISE_MULTIPLIER: 0.0
+    HABITAT_SIM_V0:
+      GPU_DEVICE_ID: {gpu_id}
+    RGB_SENSOR:
+      BATCH: *batch
+      V_OFFSET_NOISE: 0 # ___AUG____
+      V_OFFSET_NUM_STEPS: 100
+    DEPTH_SENSOR:
+      BATCH: *batch
+      V_OFFSET_NOISE: 0 # ___AUG____
+      V_OFFSET_NUM_STEPS: 100
+
+RL:
+  NO_OPERATION: False # ___AUG____
+  DEPTH_BLOCK_VIEW_FACTOR: 0.15 # ___AUG____
+  DEPTH_BLOCK_MIN_UNBLOCK: 0.1 # ___AUG____
+
+  SLACK_REWARD: -0.001
+  COLLISION_REWARD_ENABLED: False
+  SUCCESS_REWARD: 1.
+  COLLISION_REWARD: -0.01
+  COLLISION_DISTANCE: 0.3
+  PPO:
+    actor_critic:
+      type: "ExploreNavBaselinePolicyAux"
+      aux: ["rel_pos", "action"] #
+      map_aux_to_obs: []
+      ActionPrediction:
+        loss_coeff: 0.1
+      SonarPredictor:
+        loss_coeff: 1.
+      RelativePositionPredictor:
+        loss_coeff: 1.0
+        target: "gps_compass_relative"
+
+    visual_encoder: SimpleCNNRelu
+    visual_encoder_dropout: 0.0
+    channel_scale: 1
+    # ppo params
+    value_loss_coef: 0.5 # 0.5
+    action_loss_coef: 1.0 #1.0

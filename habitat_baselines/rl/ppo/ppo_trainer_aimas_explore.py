@@ -139,11 +139,9 @@ class PPOTrainerExploreAimas(PPOTrainer):
 
     def _add_intrinsic_reward(self, batch: dict, actions: torch.tensor,
                               rewards: torch.tensor, masks: torch.tensor):
-        if self.r_enabled:
-            intrinsic_r = self.r_policy.act(batch, actions, rewards, masks)
-            rewards.add_(intrinsic_r)
+        intrinsic_r = self.r_policy.act(batch, actions, rewards, masks)
 
-        return rewards
+        return intrinsic_r
 
     def _collect_rollout_step(self, rollouts, current_episode_reward, current_episode_ir_reward,
         episode_rewards, episode_ir_rewards, episode_counts, info_data: dict):
@@ -237,15 +235,17 @@ class PPOTrainerExploreAimas(PPOTrainer):
         map_values = self._get_mapping(observations, aux_out)
         batch = batch_obs_augment_aux(observations, map_values=map_values, masks=masks)
 
-        current_episode_ir_reward += rewards
-        episode_ir_rewards += (1 - masks) * current_episode_ir_reward
-        current_episode_ir_reward *= masks
-
         # -- Add intrinsic Reward
         if self.only_intrinsic_reward:
             rewards.zero_()
 
-        rewards = self._add_intrinsic_reward(batch, actions, rewards, masks)
+        if self.r_enabled:
+            ir_rewards = self._add_intrinsic_reward(batch, actions, rewards, masks)
+            current_episode_ir_reward += ir_rewards
+            episode_ir_rewards += (1 - masks) * current_episode_ir_reward
+            current_episode_ir_reward *= masks
+
+            rewards += ir_rewards
 
         current_episode_reward += rewards
         episode_rewards += (1 - masks) * current_episode_reward
