@@ -60,7 +60,7 @@ RL:
   PPO:
     actor_critic:
       type: "ExploreNavBaselinePolicyAux"
-      aux: ["rel_pos", "action"] #
+      aux: [] # ["rel_pos", "action"] #
       map_aux_to_obs: []
       ActionPrediction:
         loss_coeff: 0.1
