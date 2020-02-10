@@ -8,7 +8,7 @@ VIDEO_DIR: "results/{results_prefix}/explore_GO_test/video_dir"
 EVAL_CKPT_PATH_DIR: "results/{results_prefix}/explore_GO_test/checkpoints"
 CHECKPOINT_FOLDER: "results/{results_prefix}/explore_GO_test/checkpoints"
 LOG_FILE: "results/{results_prefix}/explore_GO_test/log_file"
-SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR"]
+SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR", "DEPTH2_SENSOR"]
 NUM_UPDATES: 10000 # So as to train on 15 Mil frames
 HARD_NUM_UPDATES: 5000
 COMMIT: "{commit_hash}"
