@@ -36,7 +36,6 @@ class SimpleCNNRelu(nn.Module):
 
         self._drop_prob = drop_prob
 
-        print("i am here---" * 100)
         if self._n_input_rgb > 0:
             cnn_dims = np.array(
                 observation_space.spaces["rgb"].shape[:2], dtype=np.float32
@@ -83,9 +82,9 @@ class SimpleCNNRelu(nn.Module):
                     kernel_size=self._cnn_layers_kernel_size[2],
                     stride=self._cnn_layers_stride[2],
                 ),
-                nn.ELU(True),
-                nn.Dropout(p=self._drop_prob),
+                nn.ReLU(True),
                 Flatten(),
+                nn.Dropout(p=self._drop_prob),
                 nn.Linear(32 * ds * cnn_dims[0] * cnn_dims[1], output_size),
                 nn.ReLU(True),
             )
