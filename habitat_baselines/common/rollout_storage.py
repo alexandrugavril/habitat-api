@@ -31,6 +31,10 @@ class RolloutStorage:
                 num_envs,
                 *observation_space.spaces[sensor].shape
             )
+            if sensor in ["rgb", "depth"]:
+                self.observations[sensor] = self.observations[sensor].permute(
+                    0, 1, 4, 2, 3
+                )
 
         self.recurrent_hidden_states = torch.zeros(
             num_steps + 1,

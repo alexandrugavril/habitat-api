@@ -10,6 +10,10 @@ from habitat_baselines.common.augmentation import PhotometricDistort
 from habitat_baselines.common.augmentation import RandomMove
 
 
+import time
+import collections
+
+
 class AugmentEnv(habitat.RLEnv):
     def __init__(self,  config: Config, dataset: Optional[Dataset] = None):
         super().__init__(config.TASK_CONFIG, dataset)
@@ -51,15 +55,15 @@ class AugmentEnv(habitat.RLEnv):
             obs["rgb"] = data[:, :, :3]
             obs["depth"] = data[:, :, -1].unsqueeze(2)
 
-        obs["rgb"] = obs["rgb"].byte()
+        obs["rgb"] = obs["rgb"].byte().permute(2, 0, 1).contiguous()
+        obs["depth"] = obs["depth"].permute(2, 0, 1).contiguous()
 
         if self.batch_input > 1:
             self._multi_batch_rgb.append(obs["rgb"])
             self._multi_batch_depth.append(obs["depth"])
 
-            obs["rgb"] = torch.cat(list(self._multi_batch_rgb), axis=2)
-            obs["depth"] = torch.cat(list(self._multi_batch_depth), axis=2)
-
+            obs["rgb"] = torch.cat(list(self._multi_batch_rgb), axis=0)
+            obs["depth"] = torch.cat(list(self._multi_batch_depth), axis=0)
         return obs
 
     def process_depth(self, depth):
@@ -93,13 +97,16 @@ class AugmentEnv(habitat.RLEnv):
         self._select_rotate = np.random.choice([1, 2])
 
         observations = super().reset()
-
         if self.batch_input > 1:
             rgb = torch.zeros_like(observations["rgb"])
+            rgb = rgb.permute(2, 0, 1).contiguous()
+
             self._multi_batch_rgb = collections.deque(
                 [rgb] * self.batch_input, maxlen=self.batch_input)
 
             depth = torch.zeros_like(observations["depth"])
+            depth = depth.permute(2, 0, 1).contiguous()
+
             self._multi_batch_depth = collections.deque(
                 [depth] * self.batch_input, maxlen=self.batch_input)
 
@@ -109,7 +116,7 @@ class AugmentEnv(habitat.RLEnv):
         return observations
 
     def step(self, *args, **kwargs):
-        if self._explore_heuristic:
+        if self._explore_heuristic and False:
             sonar = self._prev_obs["depth2"]
             nonzero = sonar != 0
 
@@ -135,6 +142,7 @@ class AugmentEnv(habitat.RLEnv):
                 self._fwd_steps = 0
 
         observation, reward, done, info = super().step(*args, **kwargs)
+
         self._prev_obs = observation
         observation = self._process_obs(observation)
 
