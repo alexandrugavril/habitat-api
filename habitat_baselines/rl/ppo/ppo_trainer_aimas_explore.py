@@ -186,7 +186,8 @@ class PPOTrainerExploreAimas(PPOTrainer):
             isc = self._live_view_env
             has_depth2 = False
             rgb = observations[isc]["rgb"][:, :, -3:].cpu().numpy()
-            depth = observations[isc]["depth"][:,:, -1].unsqueeze(2).cpu().numpy()
+            depth = observations[isc]["depth"][:, :, -1].unsqueeze(2).cpu().numpy()
+            depth2 = None
 
             if has_depth2:
                 depth2 = observations[isc]["depth2"].cpu().numpy()
@@ -532,6 +533,8 @@ class PPOTrainerExploreAimas(PPOTrainer):
         # Map location CPU is almost always better than mapping to a CUDA device.
         ckpt_dict = self.load_checkpoint(checkpoint_path, map_location="cpu")
 
+        # ==========================================================================================
+        # -- Update config for eval
         if self.config.EVAL.USE_CKPT_CONFIG:
             config = self._setup_eval_config(ckpt_dict["config"])
         else:
@@ -546,16 +549,19 @@ class PPOTrainerExploreAimas(PPOTrainer):
 
         split = config.TASK_CONFIG.DATASET.SPLIT
 
-        if len(self.config.VIDEO_OPTION) > 0:
-            config.defrost()
-            config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
-            config.TASK_CONFIG.TASK.MEASUREMENTS.append("COLLISIONS")
-            config.freeze()
+        config.defrost()
+        config.TASK_CONFIG.TASK.MEASUREMENTS.append("TOP_DOWN_MAP")
+        config.TASK_CONFIG.TASK.MEASUREMENTS.append("COLLISIONS")
+        config.freeze()
+        # ==========================================================================================
+
+        num_procs = self.config.NUM_PROCESSES
+        device = self.device
+        cfg = self.config
 
         logger.info(f"env config: {config}")
-        self.envs = construct_envs(
-            config, get_env_class(self.config.ENV_NAME)
-        )
+        self.envs = construct_envs(config, get_env_class(self.config.ENV_NAME))
+        num_envs = self.envs.num_envs
 
         self._setup_actor_critic_agent(ppo_cfg, train=False)
 
@@ -565,14 +571,13 @@ class PPOTrainerExploreAimas(PPOTrainer):
 
         aux_models = self.actor_critic.net.aux_models
 
-        other_losses = dict({k: torch.zeros(self.envs.num_envs, 1,
-                                            device=self.device)
+        other_losses = dict({k: torch.zeros(num_envs, 1, device=device)
                              for k in aux_models.keys()})
-        other_losses_action = dict({k: torch.zeros(self.envs.num_envs,
-                                                   self.envs.action_spaces[0].n,
-                                            device=self.device)
-                                    for k in aux_models.keys()})
-        num_steps = torch.zeros(self.envs.num_envs, 1,  device=self.device)
+        other_losses_action = dict({
+            k: torch.zeros(num_envs, self.envs.action_spaces[0].n, device=device)
+            for k in aux_models.keys()})
+
+        num_steps = torch.zeros(num_envs, 1,  device=device)
 
         # Config aux models for eval per item in batch
         for k, maux in aux_models.items():
@@ -585,65 +590,56 @@ class PPOTrainerExploreAimas(PPOTrainer):
             self.r_policy.eval()
 
         # get name of performance metric, e.g. "spl"
-        metric_name = self.config.TASK_CONFIG.TASK.MEASUREMENTS[0]
-        metric_cfg = getattr(self.config.TASK_CONFIG.TASK, metric_name)
+        metric_name = cfg.TASK_CONFIG.TASK.MEASUREMENTS[0]
+        metric_cfg = getattr(cfg.TASK_CONFIG.TASK, metric_name)
         measure_type = baseline_registry.get_measure(metric_cfg.TYPE)
-        assert measure_type is not None, "invalid measurement type {}".format(
-            metric_cfg.TYPE
-        )
-        self.metric_uuid = measure_type(
-            sim=None, task=None, config=None
-        )._get_uuid()
+        assert measure_type is not None, "invalid measurement type {}".format(metric_cfg.TYPE)
+
+        self.metric_uuid = measure_type(sim=None, task=None, config=None)._get_uuid()
 
         observations = self.envs.reset()
-        batch = batch_obs_augment_aux(observations, self.device)
+        batch = batch_obs_augment_aux(observations, device)
 
-        current_episode_reward = torch.zeros(
-            self.envs.num_envs, 1, device=self.device
-        )
-        current_episode_go_reward = torch.zeros(
-            self.envs.num_envs, 1, device=self.device
-        )
+        info_data_keys = ["discovered", "collisions_wall", "collisions_prox"]
+        log_data_keys = ["current_episode_reward", "current_episode_go_reward"] + info_data_keys
+        log_data = dict({k: torch.zeros(num_envs, 1, device=device) for k in log_data_keys})
+        info_data = dict({k: log_data[k] for k in info_data_keys})
 
         test_recurrent_hidden_states = torch.zeros(
             self.actor_critic.net.num_recurrent_layers,
-            self.config.NUM_PROCESSES,
+            num_procs,
             ppo_cfg.hidden_size,
-            device=self.device,
+            device=device,
         )
-        prev_actions = torch.zeros(
-            self.config.NUM_PROCESSES, 1, device=self.device, dtype=torch.long
-        )
-        not_done_masks = torch.zeros(
-            self.config.NUM_PROCESSES, 1, device=self.device
-        )
+        prev_actions = torch.zeros(num_procs, 1, device=device, dtype=torch.long)
+        not_done_masks = torch.zeros(num_procs, 1, device=device)
+
         stats_episodes = dict()  # dict of dicts that stores stats per episode
         stats_episodes_scenes = dict()  # dict of number of collected stats from
+
         # each scene
-        max_test_ep_count = self.config.TEST_EPISODE_COUNT
+        max_test_ep_count = cfg.TEST_EPISODE_COUNT
 
         # TODO this should depend on number of scenes :(
         # TODO But than envs shouldn't be paused but fast-fwd to next scene
         # TODO We consider num envs == num scenes
-        max_ep_per_env = max_test_ep_count / float(self.envs.num_envs)
+        max_ep_per_env = max_test_ep_count / float(num_envs)
 
-        rgb_frames = [
-            [] for _ in range(self.config.NUM_PROCESSES)
-        ]  # type: List[List[np.ndarray]]
-        if len(self.config.VIDEO_OPTION) > 0:
-            os.makedirs(self.config.VIDEO_DIR, exist_ok=True)
+        rgb_frames = [[] for _ in range(num_procs)]  # type: List[List[np.ndarray]]
 
-        video_log_int = self.config.VIDEO_OPTION_INTERVAL
+        if len(cfg.VIDEO_OPTION) > 0:
+            os.makedirs(cfg.VIDEO_DIR, exist_ok=True)
+
+        video_log_int = cfg.VIDEO_OPTION_INTERVAL
         num_frames = 0
 
-        # ---
         plot_pos = -1
         prev_true_pos = []
         prev_pred_pos = []
 
         while (
-            len(stats_episodes) <= self.config.TEST_EPISODE_COUNT
-            and self.envs.num_envs > 0
+            len(stats_episodes) <= cfg.TEST_EPISODE_COUNT
+            and num_envs > 0
         ):
             current_episodes = self.envs.current_episodes()
 
@@ -651,12 +647,12 @@ class PPOTrainerExploreAimas(PPOTrainer):
                 prev_hidden = test_recurrent_hidden_states
                 _, actions, _, test_recurrent_hidden_states, aux_out \
                     = self.actor_critic.act(
-                    batch,
-                    test_recurrent_hidden_states,
-                    prev_actions,
-                    not_done_masks,
-                    deterministic=False
-                )
+                        batch,
+                        test_recurrent_hidden_states,
+                        prev_actions,
+                        not_done_masks,
+                        deterministic=False
+                    )
 
                 prev_actions.copy_(actions)
 
@@ -683,6 +679,9 @@ class PPOTrainerExploreAimas(PPOTrainer):
                         other_losses_action[k][0, prev_actions.item()] += \
                             loss.item()
 
+                # ==================================================================================
+                # - Hacky logs
+
                 if plot_pos >= 0:
                     prev_true_pos.append(batch["gps_compass_start"][
                                              plot_pos].data[:2].cpu().numpy())
@@ -703,6 +702,7 @@ class PPOTrainerExploreAimas(PPOTrainer):
                         plt.show()
                         plt.waitforbuttonpress()
                         plt.close()
+                # ==================================================================================
 
             num_steps += 1
             outputs = self.envs.step([a[0].item() for a in actions])
@@ -714,38 +714,43 @@ class PPOTrainerExploreAimas(PPOTrainer):
             not_done_masks = torch.tensor(
                 [[0.0] if done else [1.0] for done in dones],
                 dtype=torch.float,
-                device=self.device,
+                device=device,
             )
 
             map_values = self._get_mapping(observations, aux_out)
-            batch = batch_obs_augment_aux(observations, device=self.device, map_values=map_values,
+            batch = batch_obs_augment_aux(observations, device=device, map_values=map_values,
                                           masks=not_done_masks)
 
             valid_map_size = [float(ifs["top_down_map"]["valid_map"].sum()) for ifs in infos]
             discovered_factor = [infos[ix]["top_down_map"]["explored_map"].sum() /
-                                 valid_map_size[ix] for ix in range(len(
-                infos))]
+                                 valid_map_size[ix] for ix in range(len(infos))]
 
             seen_factor = [infos[ix]["top_down_map"]["ful_fog_of_war_mask"].sum() /
                            valid_map_size[ix] for ix in range(len(infos))]
 
-            rewards = torch.tensor(
-                rewards, dtype=torch.float, device=self.device
-            ).unsqueeze(1)
+            rewards = torch.tensor(rewards, dtype=torch.float, device=device).unsqueeze(1)
 
-            current_episode_go_reward += rewards
+            log_data["current_episode_reward"] += rewards
 
             # -- Add intrinsic Reward
             if self.only_intrinsic_reward:
                 rewards.zero_()
 
-            rewards = self._add_intrinsic_reward(batch, actions, rewards, not_done_masks)
+            if self.r_enabled:
+                ir_rewards = self._add_intrinsic_reward(batch, actions, rewards, not_done_masks)
+                log_data["current_episode_go_reward"] += ir_rewards
 
-            current_episode_reward += rewards
+                rewards += ir_rewards
+
+            # Log other info from infos dict
+            for iii, info in enumerate(infos):
+                for k_info, v_info in info_data.items():
+                    v_info[iii] += info[k_info]
+
             next_episodes = self.envs.current_episodes()
 
             envs_to_pause = []
-            n_envs = self.envs.num_envs
+            n_envs = num_envs
 
             for i in range(n_envs):
                 scene = next_episodes[i].scene_id
@@ -765,42 +770,33 @@ class PPOTrainerExploreAimas(PPOTrainer):
                     episode_stats["success"] = int(
                         infos[i][self.metric_uuid] > 0
                     )
-                    episode_stats["reward"] = current_episode_reward[i].item()
-                    episode_stats["reward_go"] = current_episode_go_reward[i].item()
+
+                    for kk, vv in log_data.items():
+                        episode_stats[kk] = vv[i].item()
+                        vv[i] = 0
+
                     episode_stats["map_discovered"] = discovered_factor[i]
                     episode_stats["map_seen"] = seen_factor[i]
 
                     for k, v in other_losses.items():
                         episode_stats[k] = v[i].item() / num_steps[i].item()
-                        # print("Loss:", k, episode_stats[k])
-                        # print("Action:", k, other_losses_action[k] / num_frames)
-
                         other_losses_action[k][i].fill_(0)
                         other_losses[k][i] = 0
-                    # print("-" * 100)
 
                     num_steps[i] = 0
 
-                    current_episode_reward[i] = 0
-                    current_episode_go_reward[i] = 0
                     # use scene_id + episode_id as unique id for storing stats
-                    stats_episodes[
-                        (
-                            current_episodes[i].scene_id,
-                            current_episodes[i].episode_id,
-                        )
-                    ] = episode_stats
+                    stats_episodes[(current_episodes[i].scene_id, current_episodes[i].episode_id)] \
+                        = episode_stats
 
-                    print(f"Episode {len(stats_episodes)} stats:",
-                          episode_stats)
+                    print(f"Episode {len(stats_episodes)} stats:", episode_stats)
 
                     stats_episodes_scenes[current_episodes[i].scene_id] += 1
 
-                    if len(self.config.VIDEO_OPTION) > 0 and \
-                        checkpoint_index % video_log_int == 0:
+                    if len(cfg.VIDEO_OPTION) > 0 and checkpoint_index % video_log_int == 0:
                         generate_video(
-                            video_option=self.config.VIDEO_OPTION,
-                            video_dir=self.config.VIDEO_DIR,
+                            video_option=cfg.VIDEO_OPTION,
+                            video_dir=cfg.VIDEO_DIR,
                             images=rgb_frames[i],
                             episode_id=current_episodes[i].episode_id,
                             checkpoint_idx=checkpoint_index,
@@ -812,7 +808,7 @@ class PPOTrainerExploreAimas(PPOTrainer):
                         rgb_frames[i] = []
 
                 # episode continues
-                elif len(self.config.VIDEO_OPTION) > 0:
+                elif len(cfg.VIDEO_OPTION) > 0:
                     for k, v in observations[i].items():
                         if isinstance(v, torch.Tensor):
                             observations[i][k] = v.cpu().numpy()
@@ -821,14 +817,15 @@ class PPOTrainerExploreAimas(PPOTrainer):
 
             # Pop done envs:
             if len(envs_to_pause) > 0:
-                s_index = list(range(self.envs.num_envs))
+                s_index = list(range(num_envs))
                 for idx in reversed(envs_to_pause):
                     s_index.pop(idx)
 
-                current_episode_go_reward = current_episode_go_reward[s_index]
                 for k, v in other_losses.items():
                     other_losses[k] = other_losses[k][s_index]
 
+                for k, v in log_data.items():
+                    log_data[k] = log_data[k][s_index]
 
             (
                 self.envs,
@@ -843,7 +840,7 @@ class PPOTrainerExploreAimas(PPOTrainer):
                 self.envs,
                 test_recurrent_hidden_states,
                 not_done_masks,
-                current_episode_reward,
+                None,
                 prev_actions,
                 batch,
                 rgb_frames,

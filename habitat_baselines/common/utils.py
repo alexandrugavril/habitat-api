@@ -117,7 +117,7 @@ def batch_obs(
 
 def batch_obs_augment_aux(
     observations: List[Dict], device: Optional[torch.device] = None,
-    map_values: dict = None, masks: Optional[torch.device] = None
+    map_values: dict = None, masks: Optional[torch.Tensor] = None
 ) -> Dict[str, torch.Tensor]:
     r"""Transpose a batch of observation dicts to a dict of batched
     observations.

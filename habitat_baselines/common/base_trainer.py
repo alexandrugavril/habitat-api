@@ -194,7 +194,8 @@ class BaseRLTrainer(BaseTrainer):
                 :, state_index
             ]
             not_done_masks = not_done_masks[state_index]
-            current_episode_reward = current_episode_reward[state_index]
+            if current_episode_reward is not None:
+                current_episode_reward = current_episode_reward[state_index]
             prev_actions = prev_actions[state_index]
 
             for k, v in batch.items():
