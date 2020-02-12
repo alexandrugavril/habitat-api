@@ -116,7 +116,8 @@ def batch_obs(
 
 
 def batch_obs_augment_aux(
-    observations: List[Dict], device: Optional[torch.device] = None,
+    observations: List[Dict], shared_mem: Dict,
+    device: Optional[torch.device] = None,
     map_values: dict = None, masks: Optional[torch.Tensor] = None
 ) -> Dict[str, torch.Tensor]:
     r"""Transpose a batch of observation dicts to a dict of batched
@@ -144,7 +145,7 @@ def batch_obs_augment_aux(
     if map_values is not None:
         for k, v in map_values.items():
             batch[k].copy_(v * masks.to(v.device))
-
+    batch.update(shared_mem)
     return batch
 
 

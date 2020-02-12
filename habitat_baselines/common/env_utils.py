@@ -151,8 +151,9 @@ def construct_envs_shared_mem(
     assert sum(map(len, scene_splits)) == len(scenes)
 
     shared_tensors = []
+    device = torch.device("cuda", config.TORCH_GPU_ID)
     for shape in config.SHARED_SIZES:
-        shared_tensor = torch.zeros(num_processes, *shape)
+        shared_tensor = torch.zeros(num_processes, *shape, device=device)
         shared_tensor.share_memory_()
         shared_tensors.append(shared_tensor)
 

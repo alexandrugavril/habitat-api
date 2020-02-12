@@ -235,8 +235,8 @@ class PPOTrainerExploreAimas(PPOTrainer):
 
         # Map any aux_out as observations
         map_values = self._get_mapping(observations, aux_out)
-        batch = batch_obs_augment_aux(observations, map_values=map_values, masks=masks)
-        batch.update(self.envs.get_shared_mem())
+        batch = batch_obs_augment_aux(observations, self.envs.get_shared_mem(),
+                                      map_values=map_values, masks=masks)
 
         # -- Add intrinsic Reward
         if self.only_intrinsic_reward:
@@ -373,7 +373,7 @@ class PPOTrainerExploreAimas(PPOTrainer):
         rollouts.to(self.device)
 
         observations = self.envs.reset()
-        batch = batch_obs_augment_aux(observations)
+        batch = batch_obs_augment_aux(observations, self.envs.get_shared_mem())
 
         for sensor in rollouts.observations:
             if sensor in batch:
@@ -600,7 +600,7 @@ class PPOTrainerExploreAimas(PPOTrainer):
         self.metric_uuid = measure_type(sim=None, task=None, config=None)._get_uuid()
 
         observations = self.envs.reset()
-        batch = batch_obs_augment_aux(observations, device)
+        batch = batch_obs_augment_aux(observations, self.envs.get_shared_mem())
 
         info_data_keys = ["discovered", "collisions_wall", "collisions_prox"]
         log_data_keys = ["current_episode_reward", "current_episode_go_reward"] + info_data_keys
@@ -720,7 +720,8 @@ class PPOTrainerExploreAimas(PPOTrainer):
             )
 
             map_values = self._get_mapping(observations, aux_out)
-            batch = batch_obs_augment_aux(observations, device=device, map_values=map_values,
+            batch = batch_obs_augment_aux(observations, self.envs.get_shared_mem(),
+                                          device=device, map_values=map_values,
                                           masks=not_done_masks)
 
             valid_map_size = [float(ifs["top_down_map"]["valid_map"].sum()) for ifs in infos]
