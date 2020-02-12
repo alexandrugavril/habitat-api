@@ -87,8 +87,7 @@ class VectorEnvSharedMem(VectorEnv):
             self.shared_mem[mem_obs[i]] = shared_mem[i]
 
     def get_shared_mem(self):
-        share_clone = dict({k: v.clone() for k, v in self.shared_mem.items()})
-        return share_clone
+        return self.shared_mem
 
 
 
