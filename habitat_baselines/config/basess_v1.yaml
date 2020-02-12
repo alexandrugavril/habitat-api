@@ -12,6 +12,7 @@ SENSORS: ["RGB_SENSOR", "DEPTH_SENSOR", "DEPTH2_SENSOR"]
 NUM_UPDATES: 10000 # So as to train on 15 Mil frames
 HARD_NUM_UPDATES: 5000
 COMMIT: "{commit_hash}"
+SHARED_SIZES: [[6, 120, 160], [2, 120, 160]]
 
 LIVE_VIEW_ENV: -1 # > index of env to view
 

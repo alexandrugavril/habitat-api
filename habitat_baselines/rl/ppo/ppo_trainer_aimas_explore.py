@@ -23,7 +23,8 @@ import torch
 from torch.optim.lr_scheduler import LambdaLR
 
 from habitat.utils.visualizations.utils import observations_to_image
-from habitat_baselines.common.env_utils import construct_envs
+from habitat_baselines.common.env_utils import construct_envs_shared_mem as \
+    construct_envs
 from habitat_baselines.common.environments import get_env_class
 from habitat_baselines.common.rollout_storage import RolloutStorage
 from habitat_baselines.common.tensorboard_utils import TensorboardWriter
@@ -235,6 +236,7 @@ class PPOTrainerExploreAimas(PPOTrainer):
         # Map any aux_out as observations
         map_values = self._get_mapping(observations, aux_out)
         batch = batch_obs_augment_aux(observations, map_values=map_values, masks=masks)
+        batch.update(self.envs.get_shared_mem())
 
         # -- Add intrinsic Reward
         if self.only_intrinsic_reward:

@@ -125,6 +125,7 @@ class Env:
         self._elapsed_steps = 0
         self._episode_start_time: Optional[float] = None
         self._episode_over = False
+        self._seed_id = None
 
     @property
     def current_episode(self) -> Type[Episode]:
@@ -299,6 +300,7 @@ class Env:
         return observations
 
     def seed(self, seed: int) -> None:
+        self._seed_id = seed
         self._sim.seed(seed)
         self._task.seed(seed)
 

@@ -22,6 +22,12 @@ class AugmentEnv(habitat.RLEnv):
         self.cfg_depth = config.TRANSFORM_DEPTH
         self.batch_input = config.BATCH_INPUT
         self._eval_mode = config.EVAL_MODE
+        self._shared_obs = None
+
+        if len(config.SHARED_DATA) > 0:
+            self._shared_obs = dict()
+            self._shared_obs["rgb"] = config.SHARED_DATA[0]
+            self._shared_obs["depth"] = config.SHARED_DATA[1]
 
         self.photo_distort = PhotometricDistort()
         min_scale = self.cfg_transform.min_scale
@@ -64,6 +70,12 @@ class AugmentEnv(habitat.RLEnv):
 
             obs["rgb"] = torch.cat(list(self._multi_batch_rgb), axis=0)
             obs["depth"] = torch.cat(list(self._multi_batch_depth), axis=0)
+
+        if self._shared_obs:
+            idx = self._env._seed_id
+            self._shared_obs["rgb"][idx].copy_(obs.pop("rgb"))
+            self._shared_obs["depth"][idx].copy_(obs.pop("depth"))
+
         return obs
 
     def process_depth(self, depth):
@@ -116,7 +128,7 @@ class AugmentEnv(habitat.RLEnv):
         return observations
 
     def step(self, *args, **kwargs):
-        if self._explore_heuristic and False:
+        if self._explore_heuristic:
             sonar = self._prev_obs["depth2"]
             nonzero = sonar != 0
 

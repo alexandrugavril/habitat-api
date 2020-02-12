@@ -21,6 +21,7 @@ from habitat.core.simulator import (
     SimulatorActions,
 )
 from habitat.core.vector_env import ThreadedVectorEnv, VectorEnv
+from habitat.core.vector_env_shared import VectorEnvSharedMem
 from habitat.datasets import make_dataset
 from habitat.version import VERSION as __version__  # noqa
 
@@ -44,4 +45,5 @@ __all__ = [
     "Simulator",
     "ThreadedVectorEnv",
     "VectorEnv",
+    "VectorEnvSharedMem",
 ]
